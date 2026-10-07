@@ -21,13 +21,7 @@ try {
   db.reservations ??= [];
   if (!Array.isArray(db.reservations)) throw new Error();
   addTestData(db, today());
-  // 今回の一時クリアは一度だけ。控えは復元指示があるまで保持します。
-  if (!db.recordsPausedV1) {
-    db.recordsArchiveV1 = { loans: db.loans, reservations: db.reservations, date: today() };
-    db.loans = [];
-    db.reservations = [];
-    db.recordsPausedV1 = true;
-  }
+  restoreArchivedRecords(db, today());
   localStorage.setItem(KEY, JSON.stringify(db));
 } catch {
   db = seed();
@@ -352,6 +346,10 @@ $("reservation-filter").value = "active";
 $("due-date").value = today();
 $("register-submit").disabled = !storageReady;
 if (!storageReady) message("保存データを読み書きできません。データ保護のため更新を停止しています。", true);
+if (storageReady && db.recordsRestoreConflictsV1 &&
+    db.recordsRestoreConflictsV1.loans.length + db.recordsRestoreConflictsV1.reservations.length > 0) {
+  message("退避記録を復元しました。現在の貸出・予約と競合する記録は、元の控えに保持しています。", true);
+}
 renderOperation(); renderTables();
 // 日付が変わった場合も予約・期限超過の表示を更新します。
 setInterval(() => { renderOperation(); renderTables(); }, 60000);

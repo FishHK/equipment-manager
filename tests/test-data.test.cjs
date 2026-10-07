@@ -32,21 +32,6 @@ function load() {
 }
 let app = load();
 const data = () => JSON.parse(storage.get('equipment-manager-v1'));
-assert.equal(data().loans.length, 0);
-assert.equal(data().reservations.length, 0);
-assert.equal(data().recordsArchiveV1.loans.length, 16);
-assert.equal(data().recordsArchiveV1.reservations.length, 10);
-const archived = JSON.stringify(data().recordsArchiveV1);
-app.run('save(d => d.loans.push({id:1,employeeId:1,itemId:1,lendDate:today(),dueDate:today(),returnDate:null}))');
-app = load();
-assert.equal(data().loans.length, 1);
-assert.equal(JSON.stringify(data().recordsArchiveV1), archived);
-assert.equal(data().employees.length, 55);
-assert.equal(data().items.length, 67);
-console.log('PASS: records archived and cleared once; new activity and backup survive reload');
-// 以降は従来のシナリオを控えから戻した独立したテスト状態で検証。
-app.run('save(d => { d.loans = structuredClone(d.recordsArchiveV1.loans); d.reservations = structuredClone(d.recordsArchiveV1.reservations); })');
-app = load();
 const initial = data();
 assert.equal(initial.employees.length, 55);
 assert.equal(initial.items.length, 67);
@@ -191,3 +176,42 @@ assert.equal(app.run('employeeId'), null);
 assert.equal(app.run('itemId'), null);
 assert.equal(app.get('available-items').children.length, activeCount - 1);
 console.log('PASS: return from item or employee, borrower auto-selection, filtering, clearing and actual return');
+// 旧バージョンで退避したデータの復元とIDの付け直しを確認。
+const archiveFixture = { loans: structuredClone(initial.loans), reservations: structuredClone(initial.reservations), date: initial.testDataBaseDate };
+function pausedFixture(loans, reservations) {
+  const fixture = structuredClone(initial);
+  fixture.loans = loans; fixture.reservations = reservations;
+  fixture.recordsArchiveV1 = structuredClone(archiveFixture);
+  fixture.recordsPausedV1 = true;
+  storage.set('equipment-manager-v1', JSON.stringify(fixture));
+}
+pausedFixture([], []);
+app = load();
+assert.equal(data().loans.length, 16);
+assert.equal(data().reservations.length, 10);
+assert.equal(data().recordsRestoredV1, true);
+const restored = JSON.stringify(data());
+app = load();
+assert.equal(JSON.stringify(data()), restored);
+// クリア後の操作と元の記録でIDが重なっても、リンクを維持。
+pausedFixture([{ id:1, employeeId:1, itemId:1, lendDate:initial.testDataBaseDate, dueDate:'2099-01-01', returnDate:null }], []);
+app = load();
+assert.equal(data().loans.length, 17);
+assert.equal(data().loans[0].itemId, 1);
+assert.equal(new Set(data().loans.map(l => l.id)).size, 17);
+for (const r of data().reservations.filter(r => r.loanId)) {
+  assert.equal(data().loans.find(l => l.id === r.loanId).itemId, r.itemId);
+}
+assert.equal(JSON.stringify(data().recordsArchiveV1), JSON.stringify(archiveFixture));
+// 競合する過去の未返却・未貸出予約を二重に有効化しない。
+pausedFixture(
+  [{id:1,employeeId:1,itemId:48,lendDate:initial.testDataBaseDate,dueDate:'2099-01-01',returnDate:null}],
+  [{id:1,employeeId:2,itemId:42,date:'2099-01-01',dueDate:'2099-01-02',loanId:null}]
+);
+app = load();
+assert.equal(data().recordsRestoreConflictsV1.loans.length, 1);
+assert.equal(data().recordsRestoreConflictsV1.reservations.length, 1);
+assert.equal(data().loans.find(l => l.id === 1).itemId, 48);
+assert.equal(data().reservations.find(r => r.id === 1).itemId, 42);
+assert.equal(JSON.stringify(data().recordsArchiveV1), JSON.stringify(archiveFixture));
+console.log('PASS: archived records restored once, current actions preserved, IDs and links remapped, conflicts kept in archive');

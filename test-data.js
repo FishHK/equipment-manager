@@ -57,3 +57,35 @@ function addTestData(data, baseDate) {
   data.testDataVersion = 1;
   data.testDataBaseDate = baseDate;
 }
+
+// 退避記録を一度だけ復元。現在の記録を優先し、競合分は控えに残します。
+function restoreArchivedRecords(data, currentDate) {
+  if (data.recordsRestoredV1 || !data.recordsArchiveV1) return;
+  const archive = data.recordsArchiveV1;
+  data.recordsBeforeRestoreV1 = structuredClone({ loans: data.loans, reservations: data.reservations });
+  const currentLoans = [...data.loans], currentReservations = [...data.reservations];
+  const pending = (r) => !r.loanId && r.date >= currentDate;
+  const next = (rows) => Math.max(0, ...rows.map((row) => row.id)) + 1;
+  const loanIds = new Map();
+  const conflicts = { loans: [], reservations: [] };
+  for (const loan of archive.loans) {
+    const blocked = !loan.returnDate && (
+      currentLoans.some((row) => row.itemId === loan.itemId && !row.returnDate) ||
+      currentReservations.some((row) => row.itemId === loan.itemId && pending(row))
+    );
+    if (blocked) { conflicts.loans.push(loan); continue; }
+    const id = next(data.loans);
+    loanIds.set(loan.id, id);
+    data.loans.push({ ...loan, id });
+  }
+  for (const r of archive.reservations) {
+    const blocked = (r.loanId && !loanIds.has(r.loanId)) || (pending(r) && (
+      currentReservations.some((row) => row.itemId === r.itemId && pending(row)) ||
+      currentLoans.some((row) => row.itemId === r.itemId && !row.returnDate && (!row.dueDate || row.dueDate >= r.date))
+    ));
+    if (blocked) { conflicts.reservations.push(r); continue; }
+    data.reservations.push({ ...r, id: next(data.reservations), loanId: r.loanId ? loanIds.get(r.loanId) : null });
+  }
+  data.recordsRestoreConflictsV1 = conflicts;
+  data.recordsRestoredV1 = true;
+}
