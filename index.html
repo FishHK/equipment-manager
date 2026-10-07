@@ -9,8 +9,46 @@
 </head>
 <body>
   <main>
-    <h1>備品管理アプリ</h1>
-    <p id="status">準備中</p>
+    <header><h1>備品管理アプリ</h1><span>このブラウザに自動保存</span></header>
+    <nav aria-label="ページ切り替え">
+      <button data-page="lend" aria-current="page">貸出</button>
+      <button data-page="return">返却</button>
+      <button data-page="items">物品一覧</button>
+      <button data-page="history">記録</button>
+    </nav>
+    <p id="message" role="status" aria-live="polite"></p>
+    <section id="operation">
+      <div class="columns">
+        <section class="panel">
+          <h2>社員</h2>
+          <label for="employee-search">社員を検索</label>
+          <input id="employee-search" type="search" placeholder="名前で検索">
+          <div id="employees" class="list" aria-label="社員一覧"></div>
+          <label for="employee-name">選択した社員／名前を直接入力</label>
+          <input id="employee-name" placeholder="名前を入力" autocomplete="off">
+          <small>未登録の名前は貸出時に社員として登録します。</small>
+        </section>
+        <section class="panel">
+          <h2 id="item-heading">倉庫にある物品</h2>
+          <label for="item-search">物品を検索</label>
+          <input id="item-search" type="search" placeholder="製品名・モデル番号で検索">
+          <div id="available-items" class="list" aria-label="選択できる物品"></div>
+        </section>
+      </div>
+      <div class="action"><span id="selection">物品を選択してください</span><button id="submit" class="primary">借りる</button></div>
+    </section>
+    <section id="items" hidden>
+      <h2>物品一覧</h2>
+      <label for="inventory-search">物品を検索</label>
+      <input id="inventory-search" type="search" placeholder="製品名・モデル番号・借りている人で検索">
+      <div class="table-wrap"><table><thead><tr><th>製品名</th><th>モデル番号</th><th>状態</th><th>借りている人</th><th>借りた日</th></tr></thead><tbody id="inventory"></tbody></table></div>
+    </section>
+    <section id="history" hidden>
+      <h2>貸出・返却記録</h2>
+      <label for="history-search">記録を検索</label>
+      <input id="history-search" type="search" placeholder="名前・製品名・モデル番号で検索">
+      <div class="table-wrap"><table><thead><tr><th>借りた人</th><th>製品名</th><th>モデル番号</th><th>貸出日</th><th>返却日</th><th>状態</th></tr></thead><tbody id="records"></tbody></table></div>
+    </section>
   </main>
 </body>
 </html>
