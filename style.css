@@ -40,3 +40,6 @@ nav { flex-wrap: wrap; }
 .list button.overdue, .list button.overdue[aria-pressed="true"] { background: #fff0f0; color: #b91c1c; }
 .list button.overdue small { color: #b91c1c; font-weight: bold; }
 select { font: inherit; padding: 10px; border: 1px solid #b9c5d6; border-radius: 6px; background: white; color: inherit; }
+#reservation-editor { margin-top: 20px; }
+#reservation-editor select { width: 100%; }
+#reservation-list td:last-child { display: flex; gap: 6px; }

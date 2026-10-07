@@ -151,6 +151,7 @@ function tableRow(container, values, statusIndex) {
     tr.append(td);
   });
   container.append(tr);
+  return tr;
 }
 function renderTables() {
   $("inventory").replaceChildren();
@@ -158,7 +159,7 @@ function renderTables() {
     const loan = activeLoan(product.id);
     const name = loan ? employee(loan.employeeId).name : "—";
     if (matches($("inventory-search").value, itemName(product), product.model, name)) {
-      tableRow($("inventory"), [itemName(product), product.model, loan ? "貸出中" : "倉庫", name, loan?.lendDate || "—", loan?.dueDate || "—", reservation(product.id) ? employee(reservation(product.id).employeeId).name + " ／ " + reservation(product.id).date : "—"], 2);
+      tableRow($("inventory"), [itemName(product), product.model, loan ? "貸出中" : "倉庫", name, loan?.lendDate || "—", loan?.dueDate || "—"], 2);
     }
   });
   $("records").replaceChildren();
@@ -179,7 +180,7 @@ function renderTables() {
   for (const id of ["inventory", "records"]) {
     if (!$(id).childElementCount) {
       const tr = document.createElement("tr"), td = document.createElement("td");
-      td.colSpan = 7;
+      td.colSpan = id === "inventory" ? 6 : 7;
       td.textContent = "該当するデータがありません。";
       tr.append(td);
       $(id).append(tr);
@@ -196,19 +197,83 @@ function renderReservations() {
     if (!matches($("reservation-search").value, name, itemName(product), product.model, r.date)) return;
     const status = r.loanId ? "貸出済み" : r.date < today() ? "期限切れ" : r.date === today()
       ? (activeLoan(r.itemId) ? "本日予約・物品未返却" : "本日予約・貸出可能") : "予約中";
-    tableRow(body, [name, itemName(product), product.model || "—", r.date, r.dueDate, status], 5);
+    const row = tableRow(body, [name, itemName(product), product.model || "—", r.date, r.dueDate, status], 5);
+    const actions = document.createElement("td");
+    if (!r.loanId) {
+      for (const [label, handler] of [["変更", () => editReservation(r.id)], ["削除", () => deleteReservation(r.id)]]) {
+        const button = document.createElement("button");
+        button.type = "button"; button.textContent = label; button.disabled = !storageReady; button.onclick = handler;
+        actions.append(button);
+      }
+    } else actions.textContent = "貸出済み";
+    row.append(actions);
   });
   if (!body.childElementCount) {
     const tr = document.createElement("tr"), td = document.createElement("td");
-    td.colSpan = 6; td.textContent = "該当する予約がありません。";
+    td.colSpan = 7; td.textContent = "該当する予約がありません。";
     tr.append(td); body.append(tr);
   }
 }
+
+let editingReservationId = null;
+function closeReservationEditor() {
+  editingReservationId = null;
+  $("reservation-editor").hidden = true;
+}
+function editReservation(id) {
+  const r = db.reservations.find((row) => row.id === id);
+  if (!storageReady || !r || r.loanId) return;
+  editingReservationId = id;
+  for (const [field, rows, label, selected] of [
+    ["edit-employee", db.employees, (person) => person.name, r.employeeId],
+    ["edit-item", db.items, (product) => itemName(product) + " ／ " + (product.model || "モデル番号なし"), r.itemId]
+  ]) {
+    $(field).replaceChildren();
+    rows.forEach((row) => {
+      const option = document.createElement("option");
+      option.value = row.id; option.textContent = label(row); $(field).append(option);
+    });
+    $(field).value = String(selected);
+  }
+  $("edit-date").value = r.date;
+  $("edit-date").min = today();
+  $("edit-due").value = r.dueDate;
+  $("edit-due").min = r.date;
+  $("reservation-editor").hidden = false;
+}
+function deleteReservation(id) {
+  const r = db.reservations.find((row) => row.id === id);
+  if (!storageReady || !r || r.loanId) return;
+  if (!save((data) => { data.reservations = data.reservations.filter((row) => row.id !== id); })) return;
+  if (editingReservationId === id) closeReservationEditor();
+  message("予約を削除しました。");
+  renderOperation(); renderTables();
+}
+$("edit-cancel").onclick = closeReservationEditor;
+$("edit-date").onchange = () => { $("edit-due").min = $("edit-date").value || today(); };
+$("reservation-edit-form").onsubmit = (event) => {
+  event.preventDefault();
+  const current = db.reservations.find((row) => row.id === editingReservationId);
+  if (!storageReady || !current || current.loanId) return;
+  const employeeId = Number($("edit-employee").value), itemId = Number($("edit-item").value);
+  const date = $("edit-date").value, dueDate = $("edit-due").value;
+  const valid = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+  if (!employee(employeeId) || !item(itemId)) return message("予約者と物品を選択してください。", true);
+  if (!valid(date) || date < today() || !valid(dueDate) || dueDate < date) return message("本日以降の予約日と、予約日以降の返却予定日を入力してください。", true);
+  if (db.reservations.some((r) => r.id !== current.id && r.itemId === itemId && !r.loanId && r.date >= today())) return message("この物品には他の予約があります。", true);
+  const loan = activeLoan(itemId);
+  if (loan && (!loan.dueDate || loan.dueDate >= date)) return message("予約日までに返却予定のない物品です。", true);
+  if (!save((data) => Object.assign(data.reservations.find((r) => r.id === current.id), { employeeId, itemId, date, dueDate }))) return;
+  closeReservationEditor();
+  message("予約を変更しました。");
+  renderOperation(); renderTables();
+};
 
 document.querySelectorAll("nav button").forEach((button) => {
   button.onclick = () => {
     page = button.dataset.page;
     clearSelection();
+    closeReservationEditor();
     if (page === "lend") $("due-date").value = today();
     document.querySelectorAll("nav button").forEach((tab) => {
       if (tab === button) tab.setAttribute("aria-current", "page");

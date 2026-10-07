@@ -55,7 +55,7 @@
       <h2>物品一覧</h2>
       <label for="inventory-search">物品を検索</label>
       <input id="inventory-search" type="search" placeholder="製品名・モデル番号・借りている人で検索">
-      <div class="table-wrap"><table><thead><tr><th>製品名</th><th>モデル番号</th><th>状態</th><th>借りている人</th><th>借りた日</th><th>返却予定日</th><th>予約者／予約日</th></tr></thead><tbody id="inventory"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>製品名</th><th>モデル番号</th><th>状態</th><th>借りている人</th><th>借りた日</th><th>返却予定日</th></tr></thead><tbody id="inventory"></tbody></table></div>
     </section>
     <section id="reservations" class="panel" hidden>
       <h2>予約状況</h2>
@@ -67,7 +67,17 @@
         <option value="today">本日の予約</option>
         <option value="all">すべて（貸出済み・期限切れ含む）</option>
       </select>
-      <div class="table-wrap"><table><thead><tr><th>予約者</th><th>製品名</th><th>モデル番号</th><th>予約日</th><th>返却予定日</th><th>状態</th></tr></thead><tbody id="reservation-list"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>予約者</th><th>製品名</th><th>モデル番号</th><th>予約日</th><th>返却予定日</th><th>状態</th><th>操作</th></tr></thead><tbody id="reservation-list"></tbody></table></div>
+    </section>
+    <section id="reservation-editor" class="panel" hidden>
+      <h2>予約の変更</h2>
+      <form id="reservation-edit-form">
+        <label for="edit-employee">予約者</label><select id="edit-employee" required></select>
+        <label for="edit-item">物品</label><select id="edit-item" required></select>
+        <label for="edit-date">予約日</label><input id="edit-date" type="date" required>
+        <label for="edit-due">返却予定日</label><input id="edit-due" type="date" required>
+        <div class="action"><button id="edit-cancel" type="button">キャンセル</button><button class="primary">変更を保存</button></div>
+      </form>
     </section>
     <section id="history" hidden>
       <h2>貸出・返却記録</h2>
