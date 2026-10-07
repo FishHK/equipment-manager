@@ -39,3 +39,4 @@ nav { flex-wrap: wrap; }
 #due-date-field, #reservation-date-field { max-width: 320px; margin-top: 16px; }
 .list button.overdue, .list button.overdue[aria-pressed="true"] { background: #fff0f0; color: #b91c1c; }
 .list button.overdue small { color: #b91c1c; font-weight: bold; }
+select { font: inherit; padding: 10px; border: 1px solid #b9c5d6; border-radius: 6px; background: white; color: inherit; }

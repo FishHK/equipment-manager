@@ -168,6 +168,7 @@ function renderTables() {
       tableRow($("records"), [name, itemName(product), product.model, r.date, r.dueDate, "—", r.loanId ? "予約から貸出済み" : r.date < today() ? "予約期限切れ" : "予約中"], 6);
     }
   });
+  renderReservations();
   for (const id of ["inventory", "records"]) {
     if (!$(id).childElementCount) {
       const tr = document.createElement("tr"), td = document.createElement("td");
@@ -178,6 +179,25 @@ function renderTables() {
     }
   }
 }
+function renderReservations() {
+  const body = $("reservation-list"), filter = $("reservation-filter").value;
+  body.replaceChildren();
+  [...db.reservations].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id).forEach((r) => {
+    const product = item(r.itemId), name = employee(r.employeeId).name;
+    if (filter === "active" && (r.loanId || r.date < today())) return;
+    if (filter === "today" && r.date !== today()) return;
+    if (!matches($("reservation-search").value, name, itemName(product), product.model, r.date)) return;
+    const status = r.loanId ? "貸出済み" : r.date < today() ? "期限切れ" : r.date === today()
+      ? (activeLoan(r.itemId) ? "本日予約・物品未返却" : "本日予約・貸出可能") : "予約中";
+    tableRow(body, [name, itemName(product), product.model || "—", r.date, r.dueDate, status], 5);
+  });
+  if (!body.childElementCount) {
+    const tr = document.createElement("tr"), td = document.createElement("td");
+    td.colSpan = 6; td.textContent = "該当する予約がありません。";
+    tr.append(td); body.append(tr);
+  }
+}
+
 document.querySelectorAll("nav button").forEach((button) => {
   button.onclick = () => {
     page = button.dataset.page;
@@ -190,6 +210,7 @@ document.querySelectorAll("nav button").forEach((button) => {
     $("operation").hidden = !["lend", "return", "reserve", "pickup"].includes(page);
     $("register").hidden = page !== "register";
     $("items").hidden = page !== "items";
+    $("reservations").hidden = page !== "reservations";
     $("history").hidden = page !== "history";
     if (storageReady) message("");
     renderOperation();
@@ -207,6 +228,8 @@ $("employee-name").oninput = () => {
 };
 ["employee-search", "item-search"].forEach((id) => $(id).oninput = renderOperation);
 ["inventory-search", "history-search"].forEach((id) => $(id).oninput = renderTables);
+$("reservation-search").oninput = renderReservations;
+$("reservation-filter").onchange = renderReservations;
 function clearSelection() {
   employeeId = null; itemId = null; selectionSide = null;
   for (const id of ["employee-name", "employee-search", "item-search"]) $(id).value = "";
@@ -265,6 +288,7 @@ $("register-form").onsubmit = (event) => {
   message("「" + name + "」を登録しました。");
   renderOperation(); renderTables();
 };
+$("reservation-filter").value = "active";
 $("due-date").value = today();
 $("register-submit").disabled = !storageReady;
 if (!storageReady) message("保存データを読み書きできません。データ保護のため更新を停止しています。", true);

@@ -19,7 +19,7 @@ const storage = new Map();
 function load() {
   const elements = new Map();
   const get = (id) => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
-  const tabs = ['lend', 'return', 'reserve', 'pickup', 'register', 'items', 'history'].map((page) => {
+  const tabs = ['lend', 'return', 'reserve', 'pickup', 'register', 'items', 'history', 'reservations'].map((page) => {
     const button = new Element(); button.dataset.page = page; return button;
   });
   const context = vm.createContext({
@@ -75,3 +75,18 @@ assert.equal(app.get('due-date').value, app.run('reservation(itemId).dueDate'));
 app.get('submit').onclick();
 assert.equal(data().loans.length, 17);
 console.log('PASS: sample integrity, date defaults, overdue, duplicate names, reload preservation, blocked and successful reservation pickup');
+
+app.tabs[7].onclick();
+assert.equal(app.get('reservations').hidden, false);
+assert.equal(app.get('operation').hidden, true);
+assert.equal(app.get('reservation-list').children.length, 6);
+app.get('reservation-filter').value = 'all'; app.get('reservation-filter').onchange();
+assert.equal(app.get('reservation-list').children.length, 10);
+app.get('reservation-filter').value = 'today'; app.get('reservation-filter').onchange();
+assert.equal(app.get('reservation-list').children.length, 4);
+app.get('reservation-search').value = '本日予約・未返却'; app.get('reservation-search').oninput();
+assert.equal(app.get('reservation-list').children.length, 1);
+assert.equal(app.get('reservation-list').children[0].children[5].children[0].textContent, '本日予約・物品未返却');
+app.get('reservation-search').value = '該当しない検索文字列'; app.get('reservation-search').oninput();
+assert.equal(app.get('reservation-list').children[0].children[0].textContent, '該当する予約がありません。');
+console.log('PASS: reservation tab, status filters, search, blocked status and empty state');

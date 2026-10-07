@@ -15,6 +15,7 @@
       <button data-page="lend" aria-current="page">貸出</button>
       <button data-page="return">返却</button>
       <button data-page="reserve">予約</button>
+      <button data-page="reservations">予約状況</button>
       <button data-page="pickup">予約から貸出</button>
       <button data-page="register">物品登録</button>
       <button data-page="items">物品一覧</button>
@@ -55,6 +56,18 @@
       <label for="inventory-search">物品を検索</label>
       <input id="inventory-search" type="search" placeholder="製品名・モデル番号・借りている人で検索">
       <div class="table-wrap"><table><thead><tr><th>製品名</th><th>モデル番号</th><th>状態</th><th>借りている人</th><th>借りた日</th><th>返却予定日</th><th>予約者／予約日</th></tr></thead><tbody id="inventory"></tbody></table></div>
+    </section>
+    <section id="reservations" class="panel" hidden>
+      <h2>予約状況</h2>
+      <label for="reservation-search">予約を検索</label>
+      <input id="reservation-search" type="search" placeholder="予約者・製品名・モデル番号・予約日で検索">
+      <label for="reservation-filter">表示する予約</label>
+      <select id="reservation-filter">
+        <option value="active">予約中（本日・今後）</option>
+        <option value="today">本日の予約</option>
+        <option value="all">すべて（貸出済み・期限切れ含む）</option>
+      </select>
+      <div class="table-wrap"><table><thead><tr><th>予約者</th><th>製品名</th><th>モデル番号</th><th>予約日</th><th>返却予定日</th><th>状態</th></tr></thead><tbody id="reservation-list"></tbody></table></div>
     </section>
     <section id="history" hidden>
       <h2>貸出・返却記録</h2>
