@@ -16,7 +16,7 @@ class Element {
   reset() {}
 }
 const storage = new Map();
-function load() {
+function load(clock = Date) {
   const elements = new Map();
   const get = (id) => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
   const tabs = ['lend', 'return', 'reserve', 'pickup', 'register', 'items', 'history', 'reservations'].map((page) => {
@@ -25,7 +25,7 @@ function load() {
   const context = vm.createContext({
     document: { getElementById: get, createElement: () => new Element(), querySelectorAll: () => tabs },
     localStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value) },
-    structuredClone, Date, setInterval() {}
+    structuredClone, Date: clock, setInterval() {}
   });
   for (const file of ['test-data.js', 'script.js']) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context);
   return { get, tabs, run: (code) => vm.runInContext(code, context) };
@@ -215,3 +215,60 @@ assert.equal(data().loans.find(l => l.id === 1).itemId, 48);
 assert.equal(data().reservations.find(r => r.id === 1).itemId, 42);
 assert.equal(JSON.stringify(data().recordsArchiveV1), JSON.stringify(archiveFixture));
 console.log('PASS: archived records restored once, current actions preserved, IDs and links remapped, conflicts kept in archive');
+// 固定日付で予約→早期返却→翌日以降の再貸出を検証。
+function clockFor(day) {
+  return class extends Date {
+    constructor(...args) { super(...(args.length ? args : [day + 'T12:00:00'])); }
+    static now() { return new Date(day + 'T12:00:00').getTime(); }
+  };
+}
+const clean = structuredClone(initial);
+clean.loans = []; clean.reservations = []; clean.recordsRestoredV1 = true;
+storage.set('equipment-manager-v1', JSON.stringify(clean));
+app = load(clockFor('2030-04-01'));
+app.tabs[2].onclick();
+app.get('employees').children[0].onclick();
+app.get('reservation-date').value = '2030-04-01';
+app.get('due-date').value = '2030-04-05';
+app.get('available-items').children[0].onclick();
+app.get('submit').onclick();
+app.tabs[3].onclick(); app.get('available-items').children[0].onclick(); app.get('submit').onclick();
+assert.equal(data().loans.length, 1);
+assert.ok(data().reservations[0].loanId);
+app = load(clockFor('2030-04-02'));
+app.tabs[1].onclick(); app.get('available-items').children[0].onclick(); app.get('submit').onclick();
+assert.equal(data().loans[0].returnDate, '2030-04-02');
+assert.equal(app.run('reservationCompleted(db.reservations[0])'), true);
+assert.equal(app.run('reservation(1)'), undefined);
+app.tabs[7].onclick(); app.get('reservation-filter').value = 'all'; app.get('reservation-filter').onchange();
+assert.equal(app.get('reservation-list').children[0].children[5].children[0].textContent, '予約満了（返却済み）');
+app.tabs[0].onclick(); app.get('employees').children[1].onclick();
+assert.equal(app.get('available-items').children[0].disabled, true);
+app.run('itemId=1'); app.get('submit').onclick();
+assert.equal(data().loans.length, 1);
+assert.ok(app.get('message').textContent.includes('翌日'));
+app.get('employees').children[0].onclick();
+assert.equal(app.get('available-items').children[0].disabled, false);
+// 本日返却による制限は、予約からの貸出でも適用。
+app.run('save(d => d.reservations.push({id:2,employeeId:2,itemId:1,date:today(),dueDate:today(),loanId:null}))');
+app.tabs[3].onclick();
+assert.equal(app.get('available-items').children[0].disabled, true);
+app.run('employeeId=2;itemId=1'); app.get('employee-name').value='ダミーネーム002'; app.get('due-date').value='2030-04-02'; app.get('submit').onclick();
+assert.equal(data().loans.length, 1);
+app.run('deleteReservation(2)');
+// 早期返却後、元の予定日より前の新しい予約を登録できる。
+app = load(clockFor('2030-04-03'));
+app.tabs[2].onclick(); app.get('employees').children[2].onclick();
+app.get('reservation-date').value='2030-04-04'; app.get('due-date').value='2030-04-04';
+app.get('available-items').children[0].onclick(); app.get('submit').onclick();
+assert.equal(data().reservations.length, 2);
+// 3日後は別の人が通常貸出できる。
+app.tabs[0].onclick(); app.get('employees').children[1].onclick(); app.get('available-items').children[0].onclick(); app.get('submit').onclick();
+assert.equal(data().loans.length, 2);
+app.tabs[1].onclick(); app.get('available-items').children[0].onclick(); app.get('submit').onclick();
+// 4日後も、元の返却予定日を待たず別の予約者が借りられる。
+app = load(clockFor('2030-04-04'));
+app.tabs[3].onclick(); app.get('available-items').children[0].onclick(); app.get('submit').onclick();
+assert.equal(data().loans.length, 3);
+assert.equal(data().loans[2].employeeId, 3);
+console.log('PASS: same-day return blocks other borrowers in both loan paths; early return completes reservation and releases future days');
