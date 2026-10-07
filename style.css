@@ -40,6 +40,8 @@ nav { flex-wrap: wrap; }
 .list button.overdue, .list button.overdue[aria-pressed="true"] { background: #fff0f0; color: #b91c1c; }
 .list button.overdue small { color: #b91c1c; font-weight: bold; }
 select { font: inherit; padding: 10px; border: 1px solid #b9c5d6; border-radius: 6px; background: white; color: inherit; }
-#reservation-editor { margin-top: 20px; }
-#reservation-editor select { width: 100%; }
 #reservation-list td:last-child { display: flex; gap: 6px; }
+.icon-button { padding: 8px; line-height: 0; }
+.icon-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.icon-button:last-child { color: #b91c1c; }
+#editing-notice { padding: 12px; color: #134ab8; background: #e5eeff; border-radius: 6px; }
