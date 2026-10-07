@@ -81,9 +81,11 @@ function choice(container, label, detail, selected, onClick) {
 function renderOperation() {
   const pickup = page === "pickup";
   const reserving = page === "reserve";
-  for (const id of ["employee-search", "item-search", "employee-search-label", "item-search-label"]) $(id).hidden = pickup;
-  $("clear-selection").hidden = !pickup;
-  $("employee-name").readOnly = pickup;
+  const returning = page === "return";
+  const bidirectional = pickup || returning;
+  for (const id of ["employee-search", "item-search", "employee-search-label", "item-search-label"]) $(id).hidden = bidirectional;
+  $("clear-selection").hidden = !bidirectional;
+  $("employee-name").readOnly = bidirectional;
   $("reservation-date-field").hidden = !reserving;
   $("due-date-field").hidden = page === "return";
   $("reservation-date").min = today();
@@ -91,28 +93,28 @@ function renderOperation() {
   const people = $("employees");
   people.replaceChildren();
   const reservations = db.reservations.filter((r) => !r.loanId && r.date === today());
+  const selectable = returning ? db.loans.filter((loan) => !loan.returnDate) : reservations;
   db.employees.filter((person) => {
-    if (!pickup) return matches($("employee-search").value, person.name);
-    return reservations.some((r) => r.employeeId === person.id && (selectionSide === "item" ? r.itemId === itemId : true));
+    if (!bidirectional) return matches($("employee-search").value, person.name);
+    return selectable.some((r) => r.employeeId === person.id && (selectionSide === "item" ? r.itemId === itemId : true));
   }).forEach((person) => {
     const button = choice(people, person.name, overdue(person.id) ? "返却期限超過あり" : "", person.id === employeeId, () => {
-      if (pickup && selectionSide !== "item" && employeeId !== person.id) itemId = null;
+      if (bidirectional && selectionSide !== "item" && employeeId !== person.id) itemId = null;
       employeeId = person.id;
       $("employee-name").value = person.name;
-      if (pickup) { selectionSide ||= "employee"; } else itemId = null;
+      if (bidirectional) { selectionSide ||= "employee"; } else itemId = null;
       renderOperation();
     });
     if (overdue(person.id)) button.classList.add("overdue");
   });
   if (!people.childElementCount) empty(people, "該当する社員がいません。");
-  $("item-heading").textContent = pickup ? "本日予約されている物品" : reserving ? "予約できる物品" : page === "return" ? "この社員が借りている物品" : "倉庫にある物品";
+  $("item-heading").textContent = pickup ? "本日予約されている物品" : reserving ? "予約できる物品" : returning ? (employeeId ? "この社員が借りている物品" : "貸出中の物品") : "倉庫にある物品";
   const products = $("available-items");
   products.replaceChildren();
   db.items.filter((product) => {
     const loan = activeLoan(product.id), r = reservation(product.id);
-    if (pickup) return reservations.some((row) => row.itemId === product.id && (selectionSide === "employee" ? row.employeeId === employeeId : true));
+    if (bidirectional) return selectable.some((row) => row.itemId === product.id && (selectionSide === "employee" ? row.employeeId === employeeId : true));
     if (!matches($("item-search").value, itemName(product), product.model)) return false;
-    if (page === "return") return loan && loan.employeeId === employeeId;
     if (reserving) return !r && (!loan || (loan.dueDate && loan.dueDate < $("reservation-date").value));
     return !loan && (!r || r.date !== today() || r.employeeId === employeeId);
   }).forEach((product) => {
@@ -123,10 +125,10 @@ function renderOperation() {
     if (pickup && loan) detail += " ／ 現在貸出中（返却後に貸出可能）";
     choice(products, itemName(product), detail, product.id === itemId, () => {
       itemId = product.id;
-      if (pickup) {
+      if (bidirectional) {
         selectionSide ||= "item";
-        const selected = reservations.find((row) => row.itemId === itemId);
-        $("due-date").value = selected.dueDate;
+        const selected = selectable.find((row) => row.itemId === itemId);
+        if (pickup) $("due-date").value = selected.dueDate;
         employeeId = selected.employeeId;
         $("employee-name").value = employee(employeeId).name;
       }
