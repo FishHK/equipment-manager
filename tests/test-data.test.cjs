@@ -32,6 +32,21 @@ function load() {
 }
 let app = load();
 const data = () => JSON.parse(storage.get('equipment-manager-v1'));
+assert.equal(data().loans.length, 0);
+assert.equal(data().reservations.length, 0);
+assert.equal(data().recordsArchiveV1.loans.length, 16);
+assert.equal(data().recordsArchiveV1.reservations.length, 10);
+const archived = JSON.stringify(data().recordsArchiveV1);
+app.run('save(d => d.loans.push({id:1,employeeId:1,itemId:1,lendDate:today(),dueDate:today(),returnDate:null}))');
+app = load();
+assert.equal(data().loans.length, 1);
+assert.equal(JSON.stringify(data().recordsArchiveV1), archived);
+assert.equal(data().employees.length, 55);
+assert.equal(data().items.length, 67);
+console.log('PASS: records archived and cleared once; new activity and backup survive reload');
+// 以降は従来のシナリオを控えから戻した独立したテスト状態で検証。
+app.run('save(d => { d.loans = structuredClone(d.recordsArchiveV1.loans); d.reservations = structuredClone(d.recordsArchiveV1.reservations); })');
+app = load();
 const initial = data();
 assert.equal(initial.employees.length, 55);
 assert.equal(initial.items.length, 67);

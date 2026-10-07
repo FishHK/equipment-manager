@@ -21,6 +21,13 @@ try {
   db.reservations ??= [];
   if (!Array.isArray(db.reservations)) throw new Error();
   addTestData(db, today());
+  // 今回の一時クリアは一度だけ。控えは復元指示があるまで保持します。
+  if (!db.recordsPausedV1) {
+    db.recordsArchiveV1 = { loans: db.loans, reservations: db.reservations, date: today() };
+    db.loans = [];
+    db.reservations = [];
+    db.recordsPausedV1 = true;
+  }
   localStorage.setItem(KEY, JSON.stringify(db));
 } catch {
   db = seed();
