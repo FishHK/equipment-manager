@@ -13,41 +13,53 @@
     <nav aria-label="ページ切り替え">
       <button data-page="lend" aria-current="page">貸出</button>
       <button data-page="return">返却</button>
+      <button data-page="reserve">予約</button>
+      <button data-page="pickup">予約から貸出</button>
+      <button data-page="register">物品登録</button>
       <button data-page="items">物品一覧</button>
       <button data-page="history">記録</button>
     </nav>
     <p id="message" role="status" aria-live="polite"></p>
     <section id="operation">
+      <button id="clear-selection" hidden>選択解除</button>
       <div class="columns">
         <section class="panel">
           <h2>社員</h2>
-          <label for="employee-search">社員を検索</label>
+          <label id="employee-search-label" for="employee-search">社員を検索</label>
           <input id="employee-search" type="search" placeholder="名前で検索">
           <div id="employees" class="list" aria-label="社員一覧"></div>
           <label for="employee-name">選択した社員／名前を直接入力</label>
           <input id="employee-name" placeholder="名前を入力" autocomplete="off">
-          <small>未登録の名前は貸出時に社員として登録します。</small>
+          <small>未登録の名前は貸出・予約時に社員として登録します。</small>
         </section>
         <section class="panel">
           <h2 id="item-heading">倉庫にある物品</h2>
-          <label for="item-search">物品を検索</label>
+          <label id="item-search-label" for="item-search">物品を検索</label>
           <input id="item-search" type="search" placeholder="製品名・モデル番号で検索">
           <div id="available-items" class="list" aria-label="選択できる物品"></div>
         </section>
       </div>
+      <div id="reservation-date-field"><label for="reservation-date">予約日</label><input id="reservation-date" type="date" required></div>
+      <div id="due-date-field"><label for="due-date">返却予定日</label><input id="due-date" type="date" required></div>
       <div class="action"><span id="selection">物品を選択してください</span><button id="submit" class="primary">借りる</button></div>
     </section>
+    <section id="register" class="panel" hidden>
+      <h2>物品登録</h2><form id="register-form">
+      <label for="product-name">製品名（必須）</label><input id="product-name" required maxlength="100">
+      <label for="product-model">モデル番号（任意）</label><input id="product-model" maxlength="100">
+      <div class="action"><button class="primary" id="register-submit">登録する</button></div>
+      </form></section>
     <section id="items" hidden>
       <h2>物品一覧</h2>
       <label for="inventory-search">物品を検索</label>
       <input id="inventory-search" type="search" placeholder="製品名・モデル番号・借りている人で検索">
-      <div class="table-wrap"><table><thead><tr><th>製品名</th><th>モデル番号</th><th>状態</th><th>借りている人</th><th>借りた日</th></tr></thead><tbody id="inventory"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>製品名</th><th>モデル番号</th><th>状態</th><th>借りている人</th><th>借りた日</th><th>返却予定日</th><th>予約者／予約日</th></tr></thead><tbody id="inventory"></tbody></table></div>
     </section>
     <section id="history" hidden>
       <h2>貸出・返却記録</h2>
       <label for="history-search">記録を検索</label>
       <input id="history-search" type="search" placeholder="名前・製品名・モデル番号で検索">
-      <div class="table-wrap"><table><thead><tr><th>借りた人</th><th>製品名</th><th>モデル番号</th><th>貸出日</th><th>返却日</th><th>状態</th></tr></thead><tbody id="records"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>借りた人</th><th>製品名</th><th>モデル番号</th><th>貸出日／予約日</th><th>返却予定日</th><th>返却日</th><th>状態</th></tr></thead><tbody id="records"></tbody></table></div>
     </section>
   </main>
 </body>
