@@ -20,6 +20,7 @@ try {
   if (!Array.isArray(db.employees) || !Array.isArray(db.items) || !Array.isArray(db.loans)) throw new Error();
   db.reservations ??= [];
   if (!Array.isArray(db.reservations)) throw new Error();
+  addTestData(db, today());
   localStorage.setItem(KEY, JSON.stringify(db));
 } catch {
   db = seed();
@@ -181,6 +182,7 @@ document.querySelectorAll("nav button").forEach((button) => {
   button.onclick = () => {
     page = button.dataset.page;
     clearSelection();
+    if (page === "lend") $("due-date").value = today();
     document.querySelectorAll("nav button").forEach((tab) => {
       if (tab === button) tab.setAttribute("aria-current", "page");
       else tab.removeAttribute("aria-current");
@@ -263,6 +265,7 @@ $("register-form").onsubmit = (event) => {
   message("「" + name + "」を登録しました。");
   renderOperation(); renderTables();
 };
+$("due-date").value = today();
 $("register-submit").disabled = !storageReady;
 if (!storageReady) message("保存データを読み書きできません。データ保護のため更新を停止しています。", true);
 renderOperation(); renderTables();
