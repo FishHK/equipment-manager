@@ -9,79 +9,85 @@
   <script src="script.js" defer></script>
 </head>
 <body>
-  <main>
-    <header><h1>備品管理アプリ</h1><strong id="mode-badge"></strong><span>このブラウザに自動保存</span></header>
+  <a class="skip-link" href="#workspace">操作画面へ移動</a>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-icon" aria-hidden="true">▦</span><div>備品管理<span>Equipment Manager</span></div></div>
     <nav aria-label="ページ切り替え">
-      <button data-page="lend" aria-current="page">貸出</button>
-      <button data-page="return">返却</button>
-      <button data-page="reserve">予約</button>
-      <button data-page="reservations">予約状況</button>
-      <button data-page="pickup">予約から貸出</button>
-      <button data-page="register">物品登録</button>
-      <button data-page="items">物品一覧</button>
-      <button data-page="history">記録</button>
-      <button data-page="settings">設定</button>
+      <p class="nav-label">貸出・返却</p>
+      <button data-page="lend" aria-current="page"><span aria-hidden="true">↗</span>貸出</button>
+      <button data-page="return"><span aria-hidden="true">↙</span>返却</button>
+      <button data-page="reserve"><span aria-hidden="true">＋</span>予約</button>
+      <button data-page="reservations"><span aria-hidden="true">▤</span>予約状況</button>
+      <button data-page="pickup"><span aria-hidden="true">✓</span>予約から貸出</button>
+      <p class="nav-label">管理・確認</p>
+      <button data-page="register"><span aria-hidden="true">＋</span>物品登録</button>
+      <button data-page="items"><span aria-hidden="true">▦</span>物品一覧</button>
+      <button data-page="history"><span aria-hidden="true">◷</span>記録</button>
+      <button data-page="settings"><span aria-hidden="true">⚙</span>設定</button>
     </nav>
-    <p id="message" role="status" aria-live="polite"></p>
+    <div class="sidebar-foot"><span class="status-dot"></span>このブラウザに自動保存</div>
+  </aside>
+  <main id="workspace">
+    <header class="topbar"><div><p class="eyebrow">備品の受け渡しを、スムーズに。</p><h1 id="page-title">貸出</h1><p id="page-description">借りる人と物品を選び、返却予定日を確認してください。</p></div><div class="header-meta"><strong id="mode-badge"></strong><span id="current-date"></span></div></header>
+    <div class="stats" aria-label="現在の状況">
+      <button id="stat-available"><span>倉庫の物品</span><strong id="count-available">0</strong><small>物品一覧を見る →</small></button>
+      <button id="stat-loans"><span>貸出中</span><strong id="count-loans">0</strong><small>返却する →</small></button>
+      <button id="stat-reservations"><span>本日の未貸出予約</span><strong id="count-reservations">0</strong><small>予約から貸出 →</small></button>
+      <button id="stat-overdue" class="attention"><span>返却期限超過</span><strong id="count-overdue">0</strong><small>対象の記録を見る →</small></button>
+    </div>
+    <div class="notification"><p id="message" role="status" aria-live="polite"></p><button id="undo-delete" hidden>削除を取り消す</button></div>
     <section id="operation">
-      <p id="editing-notice" hidden>予約を編集中です。内容を変更して「変更を保存」を押してください。</p>
-      <button id="clear-selection" hidden>選択解除</button>
-      <div class="columns">
-        <section class="panel">
-          <h2>社員</h2>
+      <div class="operation-toolbar"><p id="operation-guide">人と物品はどちらからでも選べます。</p><div class="toolbar-actions"><a class="jump-confirmation" href="#confirmation">確認へ ↓</a><button id="clear-selection" class="text-button">選択をリセット</button></div></div>
+      <p id="editing-notice" class="notice" hidden>予約を編集中です。変更内容を確認して保存してください。</p>
+      <div class="operation-grid">
+        <section class="panel picker">
+          <div class="panel-heading"><h2><span class="step">1</span>借りる人</h2><span id="employee-count" class="count-label"></span></div>
           <label id="employee-search-label" for="employee-search">社員を検索</label>
-          <input id="employee-search" type="search" placeholder="名前で検索">
+          <input id="employee-search" type="search" placeholder="名前で絞り込む" autocomplete="off">
           <div id="employees" class="list" aria-label="社員一覧"></div>
-          <label for="employee-name">選択した社員／名前を直接入力</label>
-          <input id="employee-name" placeholder="名前を入力" autocomplete="off">
-          <small>未登録の名前は貸出・予約時に社員として登録します。</small>
+          <div class="name-field"><label for="employee-name">選択した名前 / 新しい名前</label><input id="employee-name" placeholder="一覧にいない人は名前を入力" autocomplete="off"><small id="employee-help">新しい名前は確定時に社員として登録されます。</small></div>
         </section>
-        <section class="panel">
-          <h2 id="item-heading">倉庫にある物品</h2>
+        <section class="panel picker">
+          <div class="panel-heading"><h2><span class="step">2</span><span id="item-heading">倉庫にある物品</span></h2><span id="item-count" class="count-label"></span></div>
           <label id="item-search-label" for="item-search">物品を検索</label>
-          <input id="item-search" type="search" placeholder="製品名・モデル番号で検索">
+          <input id="item-search" type="search" placeholder="製品名・モデル番号で絞り込む" autocomplete="off">
           <div id="available-items" class="list" aria-label="選択できる物品"></div>
+          <p class="picker-note">選択した物品は青く表示されます。</p>
+        </section>
+        <section id="confirmation" class="panel confirmation" aria-label="操作内容の確認">
+          <h2><span class="step">3</span>内容を確認</h2>
+          <dl class="selection-summary"><dt>社員</dt><dd id="selected-person">未選択</dd><dt>物品</dt><dd id="selection">未選択</dd></dl>
+          <div id="reservation-date-field"><label for="reservation-date">予約日 <span class="required">必須</span></label><input id="reservation-date" type="date" required></div>
+          <div id="due-date-field"><label for="due-date">返却予定日 <span class="required">必須</span></label><input id="due-date" type="date" required><div class="date-presets" aria-label="返却予定日の簡単入力"><button id="due-today" type="button">当日</button><button id="due-tomorrow" type="button">翌日</button><button id="due-week" type="button">1週間後</button></div></div>
+          <p id="action-help" class="action-help" aria-live="polite">人と物品を選択してください。</p>
+          <button id="submit" class="primary">貸出を確定</button><button id="edit-cancel" type="button" hidden>編集をキャンセル</button>
         </section>
       </div>
-      <div id="reservation-date-field"><label for="reservation-date">予約日</label><input id="reservation-date" type="date" required></div>
-      <div id="due-date-field"><label for="due-date">返却予定日</label><input id="due-date" type="date" required></div>
-      <div class="action"><span id="selection">物品を選択してください</span><button id="edit-cancel" type="button" hidden>編集をキャンセル</button><button id="submit" class="primary">借りる</button></div>
     </section>
-    <section id="register" class="panel" hidden>
-      <h2>物品登録</h2><form id="register-form">
-      <label for="product-name">製品名（必須）</label><input id="product-name" required maxlength="100">
-      <label for="product-model">モデル番号（任意）</label><input id="product-model" maxlength="100">
-      <div class="action"><button class="primary" id="register-submit">登録する</button></div>
-      </form></section>
-    <section id="items" hidden>
-      <h2>物品一覧</h2>
-      <label for="inventory-search">物品を検索</label>
-      <input id="inventory-search" type="search" placeholder="製品名・モデル番号・借りている人で検索">
-      <div class="table-wrap"><table><thead><tr><th>製品名</th><th>モデル番号</th><th>状態</th><th>借りている人</th><th>借りた日</th><th>返却予定日</th></tr></thead><tbody id="inventory"></tbody></table></div>
+    <section id="register" class="panel narrow" hidden>
+      <h2>新しい物品を追加</h2><p class="section-description">同じ製品も1台ずつ登録できます。製品名だけで登録可能です。</p><form id="register-form">
+      <label for="product-name">製品名 <span class="required">必須</span></label><input id="product-name" required maxlength="100" placeholder="例：ノートパソコン">
+      <label for="product-model">モデル番号 <span class="optional">任意</span></label><input id="product-model" maxlength="100" placeholder="例：ThinkPad E14">
+      <div class="action"><button class="primary" id="register-submit">物品を登録</button></div></form>
+    </section>
+    <section id="items" class="panel" hidden>
+      <div class="panel-heading"><h2>物品一覧</h2><button id="add-item-shortcut" class="secondary">＋ 物品を登録</button></div>
+      <div class="filters"><div><label for="inventory-search">物品を検索</label><input id="inventory-search" type="search" placeholder="製品名・モデル番号・借りている人"></div><div><label for="inventory-filter">状態</label><select id="inventory-filter"><option value="all">すべて</option><option value="available">倉庫</option><option value="out">貸出中</option><option value="overdue">返却期限超過</option></select></div></div>
+      <div class="table-wrap"><table><thead><tr><th>製品名</th><th>モデル番号</th><th>状態</th><th>借りている人</th><th>貸出日</th><th>返却予定日</th><th>操作</th></tr></thead><tbody id="inventory"></tbody></table></div>
     </section>
     <section id="reservations" class="panel" hidden>
-      <h2>予約状況</h2>
-      <label for="reservation-search">予約を検索</label>
-      <input id="reservation-search" type="search" placeholder="予約者・製品名・モデル番号・予約日で検索">
-      <label for="reservation-filter">表示する予約</label>
-      <select id="reservation-filter">
-        <option value="active">予約中（本日・今後）</option>
-        <option value="today">本日の予約</option>
-        <option value="all">すべて（貸出済み・期限切れ含む）</option>
-      </select>
+      <h2>予約一覧</h2>
+      <div class="filters"><div><label for="reservation-search">予約を検索</label><input id="reservation-search" type="search" placeholder="予約者・製品名・モデル番号・予約日"></div><div><label for="reservation-filter">表示する予約</label><select id="reservation-filter"><option value="active">予約中（本日・今後）</option><option value="today">本日の予約</option><option value="all">すべての予約</option></select></div></div>
       <div class="table-wrap"><table><thead><tr><th>予約者</th><th>製品名</th><th>モデル番号</th><th>予約日</th><th>返却予定日</th><th>状態</th><th>操作</th></tr></thead><tbody id="reservation-list"></tbody></table></div>
+      <p class="table-note">鉛筆で編集、ゴミ箱で削除。本日の予約は「受取」から貸出へ進めます。</p>
     </section>
-    <section id="history" hidden>
-      <h2>貸出・返却記録</h2>
-      <label for="history-search">記録を検索</label>
-      <input id="history-search" type="search" placeholder="名前・製品名・モデル番号で検索">
-      <div class="table-wrap"><table><thead><tr><th>借りた人</th><th>製品名</th><th>モデル番号</th><th>貸出日／予約日</th><th>返却予定日</th><th>返却日</th><th>状態</th></tr></thead><tbody id="records"></tbody></table></div>
+    <section id="history" class="panel" hidden>
+      <h2>貸出・返却・予約の記録</h2>
+      <div class="filters"><div><label for="history-search">記録を検索</label><input id="history-search" type="search" placeholder="名前・製品名・モデル番号"></div><div><label for="history-filter">表示する記録</label><select id="history-filter"><option value="all">すべて</option><option value="out">貸出中</option><option value="returned">返却済み</option><option value="overdue">返却期限超過</option><option value="reservation">予約</option></select></div></div>
+      <div class="table-wrap"><table><thead><tr><th>社員</th><th>製品名</th><th>モデル番号</th><th>貸出日／予約日</th><th>返却予定日</th><th>返却日</th><th>状態</th></tr></thead><tbody id="records"></tbody></table></div>
     </section>
-    <section id="settings" class="panel" hidden>
-      <h2>設定</h2>
-      <label><input id="test-mode" type="checkbox"> テストデータを使用する</label>
-      <p id="mode-description"></p>
-      <p>オンとオフで保存データを分けます。切り替えても、それぞれの操作内容は残ります。</p>
+    <section id="settings" class="panel narrow" hidden>
+      <h2>データの使い分け</h2><label class="toggle-row"><span>テストデータを使用する</span><input id="test-mode" type="checkbox" role="switch"></label><p id="mode-description"></p><div class="notice">オンとオフで保存データを分けます。切り替えても、それぞれの操作内容は残ります。</div><p class="table-note">データはこのブラウザに保存されます。ブラウザの保存データを削除すると記録も消えます。</p>
     </section>
   </main>
 </body>

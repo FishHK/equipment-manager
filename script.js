@@ -55,6 +55,7 @@ const blockedByReturn = (id, personId) => returnedToday(id).some((loan) => loan.
 const reservationCompleted = (r) => !!r.loanId && !!db.loans.find((loan) => loan.id === r.loanId)?.returnDate;
 const overdue = (id) => db.loans.some((l) => l.employeeId === id && !l.returnDate && l.dueDate && l.dueDate < today());
 let selectionSide = null;
+let deletedReservation = null;
 const employee = (id) => db.employees.find((person) => person.id === id);
 const item = (id) => db.items.find((product) => product.id === id);
 const matches = (query, ...values) => values.join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
@@ -100,8 +101,8 @@ function renderOperation() {
   const reserving = page === "reserve";
   const returning = page === "return";
   const bidirectional = pickup || returning;
-  for (const id of ["employee-search", "item-search", "employee-search-label", "item-search-label"]) $(id).hidden = bidirectional;
-  $("clear-selection").hidden = !bidirectional;
+  for (const id of ["employee-search", "item-search", "employee-search-label", "item-search-label"]) $(id).hidden = false;
+  $("clear-selection").hidden = false;
   $("employee-name").readOnly = bidirectional;
   $("reservation-date-field").hidden = !reserving;
   $("due-date-field").hidden = page === "return";
@@ -113,23 +114,25 @@ function renderOperation() {
   const selectable = returning ? db.loans.filter((loan) => !loan.returnDate) : reservations;
   db.employees.filter((person) => {
     if (!bidirectional) return matches($("employee-search").value, person.name);
-    return selectable.some((r) => r.employeeId === person.id && (selectionSide === "item" ? r.itemId === itemId : true));
+    return matches($("employee-search").value, person.name) && selectable.some((r) => r.employeeId === person.id && (selectionSide === "item" ? r.itemId === itemId : true));
   }).forEach((person) => {
     const button = choice(people, person.name, overdue(person.id) ? "返却期限超過あり" : "", person.id === employeeId, () => {
       if (bidirectional && selectionSide !== "item" && employeeId !== person.id) itemId = null;
       employeeId = person.id;
       $("employee-name").value = person.name;
-      if (bidirectional) { selectionSide ||= "employee"; } else if (!editingReservationId) itemId = null;
+      if (bidirectional) { selectionSide ||= "employee"; }
       renderOperation();
     });
     if (overdue(person.id)) button.classList.add("overdue");
   });
-  if (!people.childElementCount) empty(people, "該当する社員がいません。");
+  $("employee-count").textContent = people.childElementCount + "名";
+  if (!people.childElementCount) empty(people, bidirectional ? "対象の社員がいません。検索や選択をリセットしてください。" : "該当する社員がいません。新しい名前は下の欄から登録できます。");
   $("item-heading").textContent = pickup ? "本日予約されている物品" : reserving ? "予約できる物品" : returning ? (employeeId ? "この社員が借りている物品" : "貸出中の物品") : "倉庫にある物品";
   const products = $("available-items");
   products.replaceChildren();
   db.items.filter((product) => {
     const loan = activeLoan(product.id), r = reservation(product.id);
+    if (!matches($("item-search").value, itemName(product), product.model)) return false;
     if (bidirectional) return selectable.some((row) => row.itemId === product.id && (selectionSide === "employee" ? row.employeeId === employeeId : true));
     if (!matches($("item-search").value, itemName(product), product.model)) return false;
     if (reserving) return (product.id === itemId && editingReservationId) ||
@@ -159,13 +162,79 @@ function renderOperation() {
       button.disabled = blockedByReturn(product.id, borrower);
     }
   });
-  if (!products.childElementCount) empty(products, "該当する物品がありません。");
-  $("selection").textContent = itemId ? "選択中：" + itemName(item(itemId)) : "物品を選択してください";
+  $("item-count").textContent = products.childElementCount + "件";
+  if (!products.childElementCount) empty(products, reserving ? "対象の物品がありません。予約日・検索条件を確認してください。" : "対象の物品がありません。検索や選択をリセットしてください。");
+  $("selection").textContent = itemId ? itemName(item(itemId)) : "未選択";
+  $("selected-person").textContent = $("employee-name").value.trim() || "未選択";
+  $("employee-help").textContent = bidirectional ? "物品から選ぶと借りている人・予約者を自動選択します。" : "一覧にいない人は名前を入力すると、確定時に登録されます。";
+  $("operation-guide").textContent = returning ? "社員・物品、どちらから選んでも返却できます。" : pickup ? "本日の予約から選択してください。物品を選ぶと予約者も入力されます。" : reserving ? "予約日を決めて、人と物品を選んでください。" : "人と物品はどちらからでも選べます。";
   $("editing-notice").hidden = !editingReservationId;
   $("edit-cancel").hidden = !editingReservationId;
-  $("submit").textContent = reserving ? (editingReservationId ? "変更を保存" : "予約する") : page === "return" ? "返す" : "借りる";
-  $("submit").disabled = !storageReady || !itemId || !$("employee-name").value.trim() || (page === "return" && !employeeId) ||
-    ((page === "lend" || pickup) && itemId && blockedByReturn(itemId, employeeId));
+  $("submit").textContent = reserving ? (editingReservationId ? "変更を保存" : "予約する") : page === "return" ? "返却を確定" : "貸出を確定";
+  const problem = operationProblem();
+  $("action-help").textContent = problem || (returning ? "今日の日付で返却を記録します。" : editingReservationId ? "この内容で元の予約を更新します。" : "選択した内容で確定できます。");
+  $("submit").disabled = !!problem;
+
+}
+function validInputDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+}
+function operationProblem() {
+  if (!storageReady) return "保存データを利用できません。設定やブラウザの保存状態を確認してください。";
+  if (!["lend", "return", "reserve", "pickup"].includes(page)) return "";
+  const name = $("employee-name").value.trim();
+  if (!name) return "社員を選択するか、名前を入力してください。";
+  if (!employeeId && db.employees.filter(person => person.name === name).length > 1) return "同名の社員がいます。一覧から選択してください。";
+  if (!itemId) return "物品を選択してください。";
+  const loan = activeLoan(itemId), r = reservation(itemId);
+  const same = employeeId || db.employees.find(person => person.name === name)?.id;
+  if (page === "return") return !loan || loan.employeeId !== same ? "この社員が借りている物品を選択してください。" : "";
+  const date = page === "reserve" ? $("reservation-date").value : today();
+  const due = $("due-date").value;
+  if (!validInputDate(date) || date < today()) return "本日以降の予約日を入力してください。";
+  if (!validInputDate(due) || due < date) return "貸出日・予約日以降の返却予定日を入力してください。";
+  if (page === "reserve") {
+    if (db.reservations.some(row => row.id !== editingReservationId && row.itemId === itemId && !row.loanId && row.date >= today())) return "この物品は予約済みです。別の物品を選択してください。";
+    if (loan && (!loan.dueDate || loan.dueDate >= date)) return "この物品の返却予定日より後の予約日を指定してください。";
+  } else {
+    if (loan) return "この物品は貸出中です。返却されるまで借りられません。";
+    if (blockedByReturn(itemId, same)) return "本日返却された物品です。返却者以外は翌日から借りられます。";
+    if (page === "pickup" && (!r || r.date !== today() || r.employeeId !== same)) return "本日の予約者と物品を選択してください。";
+    if (r && r.date === today() && r.employeeId !== same) return "本日は他の社員の予約があります。";
+    if (r && r.date > today() && due >= r.date) return "予約日（" + r.date + "）より前の返却予定日を指定してください。";
+  }
+  return "";
+}
+function actionButton(container, text, handler) {
+  const button = document.createElement("button");
+  button.type = "button"; button.textContent = text; button.className = "row-action"; button.onclick = handler;
+  container.append(button); return button;
+}
+function startItemOperation(productId, mode) {
+  navigate(mode);
+  itemId = productId;
+  if (mode === "return") {
+    const loan = activeLoan(productId);
+    if (!loan) return;
+    selectionSide = "item"; employeeId = loan.employeeId; $("employee-name").value = employee(employeeId).name;
+  }
+  renderOperation();
+  if (mode === "lend") $("employee-search").focus?.();
+}
+function receiveReservation(id) {
+  const r = db.reservations.find(row => row.id === id);
+  if (!r || r.loanId || r.date !== today()) return;
+  navigate("pickup");
+  employeeId = r.employeeId; itemId = r.itemId; selectionSide = "item";
+  $("employee-name").value = employee(employeeId).name; $("due-date").value = r.dueDate;
+  renderOperation();
+}
+function renderOverview() {
+  $("count-available").textContent = db.items.filter(product => !activeLoan(product.id)).length;
+  $("count-loans").textContent = db.loans.filter(loan => !loan.returnDate).length;
+  $("count-reservations").textContent = db.reservations.filter(r => !r.loanId && r.date === today()).length;
+  $("count-overdue").textContent = db.loans.filter(loan => !loan.returnDate && loan.dueDate && loan.dueDate < today()).length;
+  $("current-date").textContent = today().replaceAll("-", "/");
 }
 function tableRow(container, values, statusIndex) {
   const tr = document.createElement("tr");
@@ -173,7 +242,7 @@ function tableRow(container, values, statusIndex) {
     const td = document.createElement("td");
     if (i === statusIndex) {
       const badge = document.createElement("span");
-      badge.className = `badge${value === "貸出中" ? " out" : ""}`;
+      badge.className = "badge " + (/超過|不可|未返却/.test(value) ? "danger" : value === "貸出中" ? "out" : /期限切れ/.test(value) ? "neutral" : /予約/.test(value) ? "booked" : "");
       badge.textContent = value;
       td.append(badge);
     } else td.textContent = value;
@@ -183,33 +252,43 @@ function tableRow(container, values, statusIndex) {
   return tr;
 }
 function renderTables() {
+  renderOverview();
   $("inventory").replaceChildren();
   db.items.forEach((product) => {
     const loan = activeLoan(product.id);
     const name = loan ? employee(loan.employeeId).name : "—";
+    const overdueLoan = loan && loan.dueDate && loan.dueDate < today();
+    const filter = $("inventory-filter").value;
+    if (filter === "available" && loan || filter === "out" && !loan || filter === "overdue" && !overdueLoan) return;
     if (matches($("inventory-search").value, itemName(product), product.model, name)) {
-      tableRow($("inventory"), [itemName(product), product.model, loan ? "貸出中" : returnedToday(product.id).length ? "本日返却・他者貸出不可" : "倉庫", name, loan?.lendDate || "—", loan?.dueDate || "—"], 2);
+      const row = tableRow($("inventory"), [itemName(product), product.model, loan ? (overdueLoan ? "貸出中・期限超過" : "貸出中") : returnedToday(product.id).length ? "本日返却・他者貸出不可" : "倉庫", name, loan?.lendDate || "—", loan?.dueDate || "—"], 2);
+      const cell = document.createElement("td");
+      if (loan) actionButton(cell, "返却する", () => startItemOperation(product.id, "return"));
+      else if (reservation(product.id)?.date === today()) actionButton(cell, "予約を確認", () => { navigate("reservations"); $("reservation-search").value = itemName(product); renderReservations(); });
+      else actionButton(cell, "貸出する", () => startItemOperation(product.id, "lend"));
+      row.append(cell);
     }
   });
   $("records").replaceChildren();
-  [...db.loans].reverse().forEach((loan) => {
-    const product = item(loan.itemId);
-    const name = employee(loan.employeeId).name;
-    if (matches($("history-search").value, name, itemName(product), product.model)) {
-      tableRow($("records"), [name, itemName(product), product.model, loan.lendDate, loan.dueDate || "未設定", loan.returnDate || "—", loan.returnDate ? "返却済み" : "貸出中"], 6);
-    }
-  });
-  [...db.reservations].reverse().forEach((r) => {
-    const product = item(r.itemId), name = employee(r.employeeId).name;
-    if (matches($("history-search").value, name, itemName(product), product.model)) {
-      tableRow($("records"), [name, itemName(product), product.model, r.date, r.dueDate, "—", r.loanId ? (reservationCompleted(r) ? "予約満了（返却済み）" : "予約から貸出済み") : r.date < today() ? "予約期限切れ" : "予約中"], 6);
-    }
+  const records = [
+    ...db.loans.map(loan => ({ type: "loan", date: loan.lendDate, row: loan })),
+    ...db.reservations.map(r => ({ type: "reservation", date: r.date, row: r }))
+  ].sort((a,b) => b.date.localeCompare(a.date) || b.row.id - a.row.id);
+  const historyFilter = $("history-filter").value;
+  records.forEach(record => {
+    const row = record.row, product = item(row.itemId), name = employee(row.employeeId).name;
+    const late = record.type === "loan" && !row.returnDate && row.dueDate && row.dueDate < today();
+    if (historyFilter === "reservation" && record.type !== "reservation" || historyFilter === "out" && (record.type !== "loan" || row.returnDate) || historyFilter === "returned" && (record.type !== "loan" || !row.returnDate) || historyFilter === "overdue" && !late) return;
+    if (!matches($("history-search").value, name, itemName(product), product.model)) return;
+    const status = record.type === "loan" ? (row.returnDate ? "返却済み" : late ? "貸出中・期限超過" : "貸出中")
+      : row.loanId ? (reservationCompleted(row) ? "予約満了（返却済み）" : "予約から貸出済み") : row.date < today() ? "予約期限切れ" : "予約中";
+    tableRow($("records"), [name, itemName(product), product.model || "—", record.date, row.dueDate || "未設定", row.returnDate || "—", status], 6);
   });
   renderReservations();
   for (const id of ["inventory", "records"]) {
     if (!$(id).childElementCount) {
       const tr = document.createElement("tr"), td = document.createElement("td");
-      td.colSpan = id === "inventory" ? 6 : 7;
+      td.colSpan = 7;
       td.textContent = "該当するデータがありません。";
       tr.append(td);
       $(id).append(tr);
@@ -228,6 +307,7 @@ function renderReservations() {
       ? (activeLoan(r.itemId) ? "本日予約・物品未返却" : blockedByReturn(r.itemId, r.employeeId) ? "本日返却・翌日まで貸出不可" : "本日予約・貸出可能") : "予約中";
     const row = tableRow(body, [name, itemName(product), product.model || "—", r.date, r.dueDate, status], 5);
     const actions = document.createElement("td");
+    actions.className = "row-actions";
     if (!r.loanId) {
       for (const [label, handler] of [["予約を編集", () => editReservation(r.id)], ["予約を削除", () => deleteReservation(r.id)]]) {
         const button = document.createElement("button");
@@ -240,7 +320,8 @@ function renderReservations() {
         button.disabled = !storageReady; button.onclick = handler;
         actions.append(button);
       }
-    } else actions.textContent = "貸出済み";
+      if (r.date === today()) actionButton(actions, "受取", () => receiveReservation(r.id));
+    } else actions.textContent = reservationCompleted(r) ? "完了" : "貸出済み";
     row.append(actions);
   });
   if (!body.childElementCount) {
@@ -272,6 +353,8 @@ function deleteReservation(id) {
   const r = db.reservations.find((row) => row.id === id);
   if (!storageReady || !r || r.loanId) return;
   if (!save((data) => { data.reservations = data.reservations.filter((row) => row.id !== id); })) return;
+  deletedReservation = { row: structuredClone(r), key: KEY };
+  $("undo-delete").hidden = false;
   if (editingReservationId === id) closeReservationEditor();
   message("予約を削除しました。");
   renderOperation(); renderTables();
@@ -279,8 +362,11 @@ function deleteReservation(id) {
 $("edit-cancel").onclick = () => navigate("reservations");
 function navigate(nextPage) {
   page = nextPage;
+  if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "auto" });
   clearSelection(); closeReservationEditor();
   if (page === "lend") $("due-date").value = today();
+  if (page === "reserve") { $("reservation-date").value = today(); $("due-date").value = today(); }
+  updatePageHeading();
   document.querySelectorAll("nav button").forEach((tab) => {
     if (tab.dataset.page === page) tab.setAttribute("aria-current", "page");
     else tab.removeAttribute("aria-current");
@@ -298,7 +384,7 @@ $("employee-name").oninput = () => {
   if (employee(employeeId)?.name !== name) {
     const found = db.employees.filter((person) => person.name === name);
     employeeId = found.length === 1 ? found[0].id : null;
-    itemId = null;
+    if (page === "return" || page === "pickup") itemId = null;
   }
   renderOperation();
 };
@@ -306,12 +392,15 @@ $("employee-name").oninput = () => {
 ["inventory-search", "history-search"].forEach((id) => $(id).oninput = renderTables);
 $("reservation-search").oninput = renderReservations;
 $("reservation-filter").onchange = renderReservations;
+$("inventory-filter").onchange = renderTables;
+$("history-filter").onchange = renderTables;
+$("due-date").oninput = renderOperation;
 function clearSelection() {
   employeeId = null; itemId = null; selectionSide = null;
   for (const id of ["employee-name", "employee-search", "item-search"]) $(id).value = "";
 }
 $("clear-selection").onclick = () => { clearSelection(); renderOperation(); };
-$("reservation-date").onchange = () => { if (!editingReservationId) itemId = null; renderOperation(); };
+$("reservation-date").onchange = () => { if (!editingReservationId) itemId = null; if ($("due-date").value < $("reservation-date").value) $("due-date").value = $("reservation-date").value; renderOperation(); };
 $("submit").onclick = () => {
   if (!storageReady || !itemId) return;
   const name = $("employee-name").value.trim();
@@ -391,7 +480,7 @@ $("test-mode").onchange = () => {
     localStorage.setItem(key, JSON.stringify(next));
     localStorage.setItem(MODE_KEY, nextMode ? "on" : "off");
     db = next; testMode = nextMode; KEY = key;
-    clearSelection(); closeReservationEditor();
+    clearSelection(); closeReservationEditor(); deletedReservation = null; $("undo-delete").hidden = true;
     for (const id of ["inventory-search", "history-search", "reservation-search", "reservation-date", "product-name", "product-model"]) $(id).value = "";
     $("due-date").value = today();
     message(nextMode ? "テストデータに切り替えました。" : "通常データに切り替えました。");
@@ -399,7 +488,43 @@ $("test-mode").onchange = () => {
   } catch { message("データを切り替えられませんでした。現在のデータは変更していません。", true); }
   renderSettings();
 };
-renderSettings();
+function updatePageHeading() {
+  const text = {
+    lend: ["貸出", "借りる人と物品を選び、返却予定日を確認してください。"],
+    return: ["返却", "人・物品のどちらからでも選んで、返却できます。"],
+    reserve: ["予約", "借りたい日を指定して、1回分の貸出を予約します。"],
+    pickup: ["予約から貸出", "本日の予約を選んで、物品を受け渡します。"],
+    reservations: ["予約状況", "予約の確認・編集・削除、当日の受け渡しを行えます。"],
+    items: ["物品一覧", "保管状況や借りている人を確認し、そのまま操作へ進めます。"],
+    history: ["記録", "貸出・返却・予約の履歴を、日付順に確認できます。"],
+    register: ["物品登録", "管理する物品を1台ずつ登録します。モデル番号は任意です。"],
+    settings: ["設定", "通常データとテストデータを切り替えます。"]
+  }[page];
+  $("page-title").textContent = text[0]; $("page-description").textContent = text[1];
+}
+for (const [id, offset] of [["due-today",0],["due-tomorrow",1],["due-week",7]]) {
+  $(id).onclick = () => {
+    const base = page === "reserve" && validInputDate($("reservation-date").value) ? $("reservation-date").value : today();
+    const date = new Date(base + "T12:00:00"); date.setDate(date.getDate() + offset);
+    $("due-date").value = date.getFullYear() + "-" + String(date.getMonth()+1).padStart(2,"0") + "-" + String(date.getDate()).padStart(2,"0");
+    renderOperation();
+  };
+}
+$("stat-available").onclick = () => { navigate("items"); $("inventory-filter").value = "available"; renderTables(); };
+$("stat-loans").onclick = () => navigate("return");
+$("stat-reservations").onclick = () => navigate("pickup");
+$("stat-overdue").onclick = () => { navigate("history"); $("history-filter").value = "overdue"; renderTables(); };
+$("add-item-shortcut").onclick = () => navigate("register");
+$("undo-delete").onclick = () => {
+  if (!deletedReservation || deletedReservation.key !== KEY || !storageReady) return;
+  const row = deletedReservation.row;
+  if (row.date >= today() && (db.reservations.some(r => r.itemId === row.itemId && !r.loanId && r.date >= today()) || activeLoan(row.itemId) && (!activeLoan(row.itemId).dueDate || activeLoan(row.itemId).dueDate >= row.date))) return message("この物品に新しい貸出・予約があるため、削除を取り消せません。", true);
+  if (!save(data => data.reservations.push({ ...row, id: data.reservations.some(r => r.id === row.id) ? nextId(data.reservations) : row.id }))) return;
+  deletedReservation = null; $("undo-delete").hidden = true;
+  message("予約の削除を取り消しました。"); renderOperation(); renderTables();
+};
+renderSettings(); updatePageHeading();
+$("inventory-filter").value = "all"; $("history-filter").value = "all";
 $("reservation-filter").value = "active";
 $("due-date").value = today();
 $("register-submit").disabled = !storageReady;
