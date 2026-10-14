@@ -2,7 +2,7 @@
 
 // 既存データには触れず、テスト用の社員・物品・履歴を一度だけ追加します。
 function addTestData(data, baseDate) {
-  if (data.testDataVersion >= 1) return;
+  if (data.testDataVersion >= 1) { removeImpossibleTestData(data); return; }
   const next = (rows) => Math.max(0, ...rows.map((row) => row.id)) + 1;
   const date = (offset) => {
     const d = new Date(baseDate + "T12:00:00");
@@ -24,7 +24,7 @@ function addTestData(data, baseDate) {
   });
   function loan(person, product, lent, due, returned = null) {
     const id = next(data.loans);
-    data.loans.push({ id, employeeId: personIds[person], itemId: itemIds[product], lendDate: date(lent), dueDate: due === null ? null : date(due), returnDate: returned === null ? null : date(returned) });
+    data.loans.push({ id, employeeId: personIds[person], itemId: itemIds[product], lendDate: date(lent), dueDate: date(due), returnDate: returned === null ? null : date(returned) });
     return id;
   }
   function reserve(person, product, day, due, loanId = null) {
@@ -48,7 +48,6 @@ function addTestData(data, baseDate) {
   reserve(8, 15, -1, 0);
   reserve(7, 16, -1, 2, loan(7, 16, -1, 2));
   reserve(10, 17, -4, -2, loan(10, 17, -4, -2, -2));
-  loan(11, 18, -15, null);
   loan(12, 19, -20, -18, -18);
   loan(13, 19, -10, -8, -8);
   loan(14, 19, -2, 1);
@@ -56,6 +55,7 @@ function addTestData(data, baseDate) {
   reserve(8, 26, 3, 5);
   data.testDataVersion = 1;
   data.testDataBaseDate = baseDate;
+  removeImpossibleTestData(data);
 }
 
 // 退避記録を一度だけ復元。現在の記録を優先し、競合分は控えに残します。
@@ -142,4 +142,18 @@ function validateDatabase(data) {
       if (!loan || loan.itemId !== r.itemId || loan.employeeId !== r.employeeId) throw Error('Invalid reservation link');
     }
   }
+}
+
+// 現行画面から作成できない「返却予定日なし」をテスト領域から除去。
+function removeImpossibleTestData(data) {
+  const groups = [data, data.recordsArchiveV1, data.recordsBeforeRestoreV1, data.recordsRestoreConflictsV1].filter(Boolean);
+  for (const group of groups) {
+    if (!Array.isArray(group.loans) || !Array.isArray(group.reservations)) continue;
+    const removed = new Set(group.loans.filter(row => !row.dueDate).map(row => row.id));
+    group.loans = group.loans.filter(row => !!row.dueDate);
+    group.reservations = group.reservations.filter(row => !!row.dueDate && (!row.loanId || !removed.has(row.loanId)));
+  }
+  const used = groups.flatMap(group => [...(group.loans || []), ...(group.reservations || [])]);
+  data.employees = data.employees.filter(row => row.name !== 'テスト社員：旧データ期限なし' || used.some(record => record.employeeId === row.id));
+  data.items = data.items.filter(row => row.name !== 'テスト物品：期限未設定' || used.some(record => record.itemId === row.id));
 }

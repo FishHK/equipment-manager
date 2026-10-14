@@ -25,7 +25,7 @@ try {
     if (!Array.isArray(test.employees) || !Array.isArray(test.items) || !Array.isArray(test.loans)) throw new Error();
     test.reservations ??= [];
     if (!Array.isArray(test.reservations)) throw new Error();
-    addTestData(test, today()); restoreArchivedRecords(test, today());
+    addTestData(test, today()); restoreArchivedRecords(test, today()); removeImpossibleTestData(test);
     validateDatabase(test);
     const normal = separateNormalData(test);
     if (legacy && !localStorage.getItem("equipment-manager-before-settings-v1")) localStorage.setItem("equipment-manager-before-settings-v1", legacy);
@@ -40,7 +40,7 @@ try {
   if (!Array.isArray(db.employees) || !Array.isArray(db.items) || !Array.isArray(db.loans)) throw new Error();
   db.reservations ??= [];
   if (!Array.isArray(db.reservations)) throw new Error();
-  if (testMode) { addTestData(db, today()); restoreArchivedRecords(db, today()); }
+  if (testMode) { addTestData(db, today()); restoreArchivedRecords(db, today()); removeImpossibleTestData(db); }
   validateDatabase(db);
   localStorage.setItem(KEY, JSON.stringify(db));
 } catch {
@@ -386,7 +386,9 @@ $("test-mode").onchange = () => {
     const saved = localStorage.getItem(key);
     const next = saved ? JSON.parse(saved) : { employees: [], items: [], loans: [], reservations: [] };
     if (![next.employees, next.items, next.loans, next.reservations].every(Array.isArray)) throw new Error();
+    if (nextMode) removeImpossibleTestData(next);
     validateDatabase(next);
+    localStorage.setItem(key, JSON.stringify(next));
     localStorage.setItem(MODE_KEY, nextMode ? "on" : "off");
     db = next; testMode = nextMode; KEY = key;
     clearSelection(); closeReservationEditor();

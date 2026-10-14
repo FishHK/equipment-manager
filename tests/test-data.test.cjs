@@ -35,9 +35,9 @@ function load(clock = Date, faults = {}) {
 let app = load();
 const data = () => JSON.parse(storage.get('equipment-manager-test-v1'));
 const initial = data();
-assert.equal(initial.employees.length, 55);
-assert.equal(initial.items.length, 67);
-assert.equal(initial.loans.length, 16);
+assert.equal(initial.employees.length, 54);
+assert.equal(initial.items.length, 66);
+assert.equal(initial.loans.length, 15);
 assert.equal(initial.reservations.length, 10);
 assert.equal(app.get('due-date').value, app.run('today()'));
 for (const key of ['employees', 'items', 'loans', 'reservations']) {
@@ -48,14 +48,14 @@ for (const row of [...initial.loans, ...initial.reservations]) {
   assert.ok(initial.items.some((item) => item.id === row.itemId));
 }
 assert.equal(app.run('db.employees.filter(p => overdue(p.id)).length'), 3);
-assert.equal(app.run('itemName(db.items[60])'), 'テスト物品：同一製品 (1)');
-assert.equal(app.run('itemName(db.items[62])'), 'テスト物品：同一製品 (3)');
-assert.equal(app.run('itemName(db.items[63])'), 'テスト物品：同一製品');
+assert.equal(app.run('itemName(db.items[59])'), 'テスト物品：同一製品 (1)');
+assert.equal(app.run('itemName(db.items[61])'), 'テスト物品：同一製品 (3)');
+assert.equal(app.run('itemName(db.items[62])'), 'テスト物品：同一製品');
 // 既存データ・テスト操作を再読み込みしても保持し、追加を繰り返さない。
 app.run('save(d => d.items.push({id:1000,name:"既存の登録物品",model:""}))');
 app = load();
-assert.equal(data().items.length, 68);
-assert.equal(data().loans.length, 16);
+assert.equal(data().items.length, 67);
+assert.equal(data().loans.length, 15);
 assert.equal(data().items.at(-1).id, 1000);
 // 貸出タブに戻ると今日に戻る。手入力中の描画では上書きしない。
 app.get('due-date').value = '2099-01-01';
@@ -68,14 +68,14 @@ app.tabs[3].onclick();
 assert.equal(app.get('available-items').children.length, 4);
 const blocked = app.get('available-items').children.find((button) => button.textContent.includes('未返却'));
 blocked.onclick(); app.get('submit').onclick();
-assert.equal(data().loans.length, 16);
+assert.equal(data().loans.length, 15);
 assert.ok(app.get('message').textContent.includes('貸出中'));
 // 正常な予約品を物品側から選び、予約の返却予定日を引き継ぐ。
 app.get('clear-selection').onclick();
 app.get('available-items').children.find((button) => button.textContent.includes('本日予約B')).onclick();
 assert.equal(app.get('due-date').value, app.run('reservation(itemId).dueDate'));
 app.get('submit').onclick();
-assert.equal(data().loans.length, 17);
+assert.equal(data().loans.length, 16);
 console.log('PASS: sample integrity, date defaults, overdue, duplicate names, reload preservation, blocked and successful reservation pickup');
 
 app.tabs[7].onclick();
@@ -189,7 +189,7 @@ function pausedFixture(loans, reservations) {
 }
 pausedFixture([], []);
 app = load();
-assert.equal(data().loans.length, 16);
+assert.equal(data().loans.length, 15);
 assert.equal(data().reservations.length, 10);
 assert.equal(data().recordsRestoredV1, true);
 const restored = JSON.stringify(data());
@@ -198,9 +198,9 @@ assert.equal(JSON.stringify(data()), restored);
 // クリア後の操作と元の記録でIDが重なっても、リンクを維持。
 pausedFixture([{ id:1, employeeId:1, itemId:1, lendDate:initial.testDataBaseDate, dueDate:'2099-01-01', returnDate:null }], []);
 app = load();
-assert.equal(data().loans.length, 17);
+assert.equal(data().loans.length, 16);
 assert.equal(data().loans[0].itemId, 1);
-assert.equal(new Set(data().loans.map(l => l.id)).size, 17);
+assert.equal(new Set(data().loans.map(l => l.id)).size, 16);
 for (const r of data().reservations.filter(r => r.loanId)) {
   assert.equal(data().loans.find(l => l.id === r.loanId).itemId, r.itemId);
 }
@@ -306,7 +306,7 @@ const normal = JSON.parse(storage.get('equipment-manager-v1'));
 assert.equal(normal.employees.length, 1); assert.equal(normal.items.length, 1);
 assert.equal(normal.loans.length, 1); assert.equal(normal.reservations.length, 1);
 assert.equal(storage.get('equipment-manager-before-settings-v1'), JSON.stringify(legacy));
-assert.equal(data().employees.length, 56);
+assert.equal(data().employees.length, 55);
 console.log('PASS: legacy migration preserves original backup and custom data references');
 // 保存失敗はメモリ状態と保存領域を変更しない。
 const faults = {};
@@ -385,3 +385,25 @@ assert.equal(data().items.length,productsBefore+2);
 assert.equal(app.run('itemName(db.items.at(-2))'),'名前だけ登録 (1)');
 assert.equal(app.run('itemName(db.items.at(-1))'),'名前だけ登録 (2)');
 console.log('PASS: direct employee registration, escaped text display, overdue warning cleared and duplicate name-only products');
+// 既存テスト領域の未設定予定日を、設定オン時にも削除し再生成しない。
+const outdated = structuredClone(initial);
+outdated.employees.push({id:1002,name:'テスト社員：旧データ期限なし'});
+outdated.items.push({id:1002,name:'テスト物品：期限未設定',model:'TEST-019'});
+outdated.loans.push({id:1002,employeeId:1002,itemId:1002,lendDate:'2030-04-01',dueDate:null,returnDate:null});
+outdated.recordsArchiveV1 = {loans:[structuredClone(outdated.loans.at(-1))],reservations:[],date:'2030-04-01'};
+outdated.recordsRestoredV1 = true;
+storage.set('equipment-manager-test-v1',JSON.stringify(outdated));
+storage.set('equipment-manager-mode-v1','off');
+const normalBeforeCleanup = storage.get('equipment-manager-v1');
+app = load(clockFor('2030-04-04'));
+app.get('test-mode').checked=true;app.get('test-mode').onchange();
+assert.ok(data().loans.every(row => row.dueDate));
+assert.ok(!data().employees.some(row => row.name === 'テスト社員：旧データ期限なし'));
+assert.ok(!data().items.some(row => row.name === 'テスト物品：期限未設定'));
+assert.equal(data().recordsArchiveV1.loans.length,0);
+assert.equal(storage.get('equipment-manager-v1'),normalBeforeCleanup);
+const cleaned = storage.get('equipment-manager-test-v1');
+app = load(clockFor('2030-04-04'));
+assert.equal(storage.get('equipment-manager-test-v1'),cleaned);
+assert.ok(data().loans.some(row => row.returnDate === null));
+console.log('PASS: impossible sample deadlines removed on toggle and reload, archives cleaned, valid unreturned loans and normal data preserved');
