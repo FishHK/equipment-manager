@@ -9,7 +9,7 @@ function addTestData(data, baseDate) {
     d.setDate(d.getDate() + offset);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
-  const people = ["未貸出", "本日返却", "明日返却", "期限超過1日", "期限超過30日", "複数貸出・一部超過", "本日予約2件", "本日予約1件", "将来予約", "予約物品が未返却", "返却済み", "旧データ期限なし", "同姓同名", "同姓同名", "検索 <確認> & テスト"];
+  const people = ["未貸出", "本日返却", "明日返却", "期限超過1日", "期限超過30日", "複数貸出・一部超過", "本日予約2件", "本日予約1件", "将来予約", "予約物品が未返却", "返却済み", "旧データ期限なし", "履歴確認A", "履歴確認B", "検索 <確認> & テスト"];
   const personIds = people.map((label) => {
     const id = next(data.employees);
     data.employees.push({ id, name: "テスト社員：" + label });
@@ -146,6 +146,15 @@ function validateDatabase(data) {
 
 // 現行画面から作成できない「返却予定日なし」をテスト領域から除去。
 function removeImpossibleTestData(data) {
+  // 現行の登録画面では同名社員を別人として追加できないため、既知のサンプル名だけ修正。
+  let duplicateIndex = 0;
+  for (const person of data.employees) {
+    if (person.name !== "テスト社員：同姓同名") continue;
+    const base = "テスト社員：履歴確認" + String.fromCharCode(65 + duplicateIndex++);
+    let name = base, suffix = 2;
+    while (data.employees.some(row => row.id !== person.id && row.name === name)) name = base + " (" + suffix++ + ")";
+    person.name = name;
+  }
   const groups = [data, data.recordsArchiveV1, data.recordsBeforeRestoreV1, data.recordsRestoreConflictsV1].filter(Boolean);
   for (const group of groups) {
     if (!Array.isArray(group.loans) || !Array.isArray(group.reservations)) continue;

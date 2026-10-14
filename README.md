@@ -17,6 +17,7 @@
 | `test-data.js` | サンプルデータ生成と既存保存データの互換処理 |
 | `tests/run.cjs` | 構文チェックと自動テストの一括実行 |
 | `TEST-PLAN.md` | テスト要件・自動／手動の確認範囲 |
+| `tests/audit-samples.test.cjs` | 現行入力ルールに対するサンプルの整合性監査 |
 | `tests/test-data.test.cjs` | Node.jsによる処理の自動テスト |
 | `USER-SPEC.md` | ユーザー向け仕様書 |
 | `TEST-DATA.md` | サンプルデータの確認ケース |

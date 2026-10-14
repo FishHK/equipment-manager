@@ -335,7 +335,8 @@ assert.equal(data().loans.at(-1).returnDate,null);
 app.run('employeeId=1001;itemId=1');app.get('employee-name').value='登録社員';app.get('submit').onclick();app.get('submit').onclick();
 assert.equal(data().loans.at(-1).returnDate,'2030-04-04');
 // 同姓同名の直接入力は新規登録せず拒否。
-app.tabs[0].onclick();app.run('itemId=2;employeeId=null');app.get('employee-name').value='テスト社員：同姓同名';app.get('submit').onclick();
+app.run('save(d => { d.employees.push({id:2001,name:"負例：同姓同名"},{id:2002,name:"負例：同姓同名"}); })');
+app.tabs[0].onclick();app.run('itemId=2;employeeId=null');app.get('employee-name').value='負例：同姓同名';app.get('submit').onclick();
 assert.equal(data().loans.length,loanCount+1);
 assert.ok(app.get('message').textContent.includes('同名'));
 console.log('PASS: write failures, invalid dates, wrong borrower, duplicate clicks and ambiguous employee names');
