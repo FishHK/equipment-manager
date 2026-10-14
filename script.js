@@ -480,6 +480,7 @@ $("test-mode").onchange = () => {
     localStorage.setItem(key, JSON.stringify(next));
     localStorage.setItem(MODE_KEY, nextMode ? "on" : "off");
     db = next; testMode = nextMode; KEY = key;
+    resetImport(); importUndo = null; $("undo-import").hidden = true;
     clearSelection(); closeReservationEditor(); deletedReservation = null; $("undo-delete").hidden = true;
     for (const id of ["inventory-search", "history-search", "reservation-search", "reservation-date", "product-name", "product-model"]) $(id).value = "";
     $("due-date").value = today();
@@ -498,7 +499,7 @@ function updatePageHeading() {
     items: ["物品一覧", "保管状況や借りている人を確認し、そのまま操作へ進めます。"],
     history: ["記録", "貸出・返却・予約の履歴を、日付順に確認できます。"],
     register: ["物品登録", "管理する物品を1台ずつ登録します。モデル番号は任意です。"],
-    settings: ["設定", "通常データとテストデータを切り替えます。"]
+    settings: ["設定", "データの切り替え・バックアップ・取り込みを行います。"]
   }[page];
   $("page-title").textContent = text[0]; $("page-description").textContent = text[1];
 }
@@ -523,6 +524,119 @@ $("undo-delete").onclick = () => {
   deletedReservation = null; $("undo-delete").hidden = true;
   message("予約の削除を取り消しました。"); renderOperation(); renderTables();
 };
+let importPending = null, importUndo = null, importEpoch = 0;
+function downloadFile(text, filename, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const anchor = document.createElement("a");
+  anchor.href = url; anchor.download = filename;
+  document.body.append(anchor); anchor.click(); anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function exportBackup(source = db) {
+  try { downloadFile(DataIO.exportJSON(source, testMode ? "test" : "normal", today()), "equipment-" + (testMode ? "test-" : "normal-") + today() + ".json", "application/json;charset=utf-8"); }
+  catch { message("バックアップを出力できませんでした。", true); }
+}
+function resetImport() {
+  importEpoch++; importPending = null;
+  $("import-file").value = "";
+  $("import-preview").hidden = true; $("export-before-import").hidden = true;
+  $("import-confirm").checked = false; $("import-apply").disabled = true;
+  $("import-status").textContent = ""; $("import-status").classList.toggle("error", false);
+  const type = $("import-type").value;
+  $("import-format-help").textContent = type === "json" ? "このアプリで出力したJSONを使用します。現在のモードの社員・物品・履歴・予約を置き換えます。"
+    : type === "employees" ? "見出しは「名前」（または name）。同名社員は追加せずスキップします。ファイル内のIDは使用しません。"
+    : "見出しは「製品名」「モデル番号」（または name,model）。モデル番号は省略可能。1行を1個の物品として追加し、IDを自動採番します。";
+}
+function importStatus(text, error = false) {
+  $("import-status").textContent = text; $("import-status").classList.toggle("error", error);
+}
+function showImportPreview(plan) {
+  const body = $("import-preview-rows"); body.replaceChildren();
+  const display = [];
+  if (plan.type === "json") {
+    const counts = ["employees", "items", "loans", "reservations"].map(key => plan.data[key].length);
+    $("import-summary").textContent = "社員 " + counts[0] + "件 / 物品 " + counts[1] + "件 / 貸出 " + counts[2] + "件 / 予約 " + counts[3] + "件\n出力元：" + (plan.mode === "test" ? "テスト" : "通常") + " → 取り込み先：" + (testMode ? "テスト" : "通常") + "モード\n現在のデータ一式を置き換えます。操作前にJSON保存をおすすめします。";
+    plan.data.employees.slice(0,5).forEach(row => display.push(["社員", row.name]));
+    plan.data.items.slice(0,5).forEach(row => display.push(["物品", row.name + " ／ " + (row.model || "モデルなし")]));
+    plan.data.loans.slice(0,5).forEach(row => display.push(["貸出", row.lendDate + " ／ " + plan.data.employees.find(p=>p.id===row.employeeId).name + " ／ " + plan.data.items.find(p=>p.id===row.itemId).name]));
+    plan.data.reservations.slice(0,5).forEach(row => display.push(["予約", row.date + " ／ " + plan.data.employees.find(p=>p.id===row.employeeId).name + " ／ " + plan.data.items.find(p=>p.id===row.itemId).name]));
+  } else {
+    $("import-summary").textContent = (plan.type === "employees" ? "社員" : "物品") + " " + plan.added.length + "件を追加します。" + (plan.skipped ? " 同名の社員 " + plan.skipped + "件はスキップします。" : "") + "\n現在のデータは残ります。最初の10件を表示しています。";
+    plan.added.slice(0,10).forEach(row=>display.push([plan.type === "employees" ? "社員" : "物品", row.name + (row.model ? " ／ " + row.model : "")]));
+  }
+  display.forEach(values=>tableRow(body, values, -1));
+  $("import-preview").hidden = false; $("export-before-import").hidden = false;
+  $("import-confirm-label").hidden = plan.type !== "json";
+  $("import-confirm").checked = false;
+  $("import-apply").disabled = plan.type === "json";
+  importStatus("内容を確認してから実行してください。" + (plan.type === "json" ? "表示は各種類の先頭5件です。" : ""));
+}
+$("export-json").onclick = () => exportBackup();
+$("export-before-import").onclick = () => exportBackup();
+$("export-csv").onclick = () => {
+  const type = $("export-csv-type").value;
+  try { downloadFile(DataIO.exportCSV(db, type), "equipment-" + type + "-" + (testMode ? "test-" : "normal-") + today() + ".csv", "text/csv;charset=utf-8"); }
+  catch { message("CSVを出力できませんでした。", true); }
+};
+$("import-type").onchange = resetImport;
+$("import-cancel").onclick = resetImport;
+$("import-confirm").onchange = () => { $("import-apply").disabled = !importPending || !storageReady || importPending.type === "json" && !$("import-confirm").checked; };
+$("import-file").onchange = async () => {
+  const file = $("import-file").files?.[0], token = ++importEpoch;
+  importPending = null; $("import-preview").hidden = true; $("import-apply").disabled = true; $("export-before-import").hidden = true;
+  if (!file || !storageReady) return;
+  const key = KEY, type = $("import-type").value, snapshot = JSON.stringify(db);
+  importStatus("ファイルを確認しています…");
+  try {
+    if (file.size > 5 * 1024 * 1024) throw new Error("ファイルは5MB以内にしてください。");
+    const text = await file.text();
+    if (token !== importEpoch || key !== KEY) return;
+    if (text.includes("\uFFFD")) throw new Error("文字コードを読み取れません。UTF-8で保存してください。");
+    const plan = type === "json" ? { type, ...DataIO.importJSON(text, today()) } : DataIO.importCSV(text, type, db);
+    importPending = { ...plan, key, snapshot };
+    showImportPreview(importPending);
+  } catch (error) { if (token === importEpoch && key === KEY) importStatus(error.message || "ファイルを読み取れませんでした。", true); }
+};
+$("import-apply").onclick = () => {
+  const plan = importPending;
+  if (!storageReady || !plan || plan.key !== KEY || plan.type === "json" && !$("import-confirm").checked) return;
+  if (plan.snapshot !== JSON.stringify(db)) return importStatus("確認後にデータが変わりました。ファイルを選び直してください。", true);
+  const before = structuredClone(db);
+  let updated;
+  try {
+    if (plan.type === "json") {
+      DataIO.validate(plan.data, today());
+      updated = structuredClone(plan.data);
+      if (testMode) { updated.testDataVersion = 1; updated.recordsRestoredV1 = true; }
+    } else {
+      updated = structuredClone(db);
+      let id = nextId(updated[plan.type]);
+      for (const row of plan.added) updated[plan.type].push({ id: id++, ...row });
+      validateDatabase(updated);
+    }
+    localStorage.setItem(KEY + "-before-import", JSON.stringify(before));
+    localStorage.setItem(KEY, JSON.stringify(updated));
+  } catch (error) { return importStatus("取り込みできませんでした。現在のデータは変更していません。 " + (error.message || ""), true); }
+  db = updated;
+  importUndo = { key: KEY, before, after: JSON.stringify(updated) };
+  resetImport(); clearSelection(); closeReservationEditor(); deletedReservation = null; $("undo-delete").hidden = true;
+  $("undo-import").hidden = false;
+  importStatus("取り込みが完了しました。" + (plan.type === "json" ? "データを復元しました。" : plan.added.length + "件を追加しました。"));
+  renderOperation(); renderTables();
+};
+$("undo-import").onclick = () => {
+  if (!storageReady || !importUndo || importUndo.key !== KEY) return;
+  if (importUndo.after !== JSON.stringify(db)) return importStatus("取り込み後に操作が行われたため、元に戻せません。取り込み前の控えは保持しています。", true);
+  try { localStorage.setItem(KEY, JSON.stringify(importUndo.before)); }
+  catch { return importStatus("元に戻せませんでした。現在のデータは変更していません。", true); }
+  db = importUndo.before; importUndo = null;
+  resetImport(); clearSelection(); closeReservationEditor(); $("undo-import").hidden = true;
+  importStatus("直前の取り込みを取り消しました。"); renderOperation(); renderTables();
+};
+$("import-type").value = "json"; $("export-csv-type").value = "employees";
+$("import-file").disabled = !storageReady;
+$("export-json").disabled = !storageReady; $("export-csv").disabled = !storageReady;
+resetImport();
 renderSettings(); updatePageHeading();
 $("inventory-filter").value = "all"; $("history-filter").value = "all";
 $("reservation-filter").value = "active";

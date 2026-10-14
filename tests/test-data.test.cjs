@@ -29,7 +29,7 @@ function load(clock = Date, faults = {}) {
     localStorage: { getItem: (key) => { if (faults.read) throw Error("read failure"); return storage.get(key); }, setItem: (key, value) => { if (faults.write) throw Error("write failure"); storage.set(key, value); } },
     structuredClone, Date: clock, setInterval() {}
   });
-  for (const file of ['test-data.js', 'script.js']) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context);
+  for (const file of ['test-data.js', 'data-io.js', 'script.js']) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context);
   return { get, tabs, run: (code) => vm.runInContext(code, context) };
 }
 let app = load();
@@ -463,3 +463,45 @@ assert.equal(app.run('itemId'),2);
 assert.equal(app.get('selected-person').textContent,'追加社員：物品先選択');
 assert.equal(app.get('submit').disabled,false);
 console.log('PASS: item-first lending preserves product while entering a new employee');
+// ファイル選択→確認→実行、保存失敗、非同期のモード切替を確認。
+(async()=>{
+  storage.clear();const faults={};app=load(clockFor('2030-04-04'),faults);
+  app.tabs[8].onclick();
+  const replacement={employees:[{id:1,name:'復元社員'}],items:[{id:1,name:'復元物品',model:''}],loans:[],reservations:[]};
+  const serialized=app.run('DataIO.exportJSON') (replacement,'normal','2030-04-04');
+  app.get('import-file').files=[{size:serialized.length,text:async()=>serialized}];
+  const before=storage.get('equipment-manager-test-v1');
+  await app.get('import-file').onchange();
+  assert.equal(app.get('import-preview').hidden,false);assert.equal(app.get('import-apply').disabled,true);
+  app.get('import-apply').onclick();assert.equal(storage.get('equipment-manager-test-v1'),before);
+  app.get('import-confirm').checked=true;app.get('import-confirm').onchange();
+  assert.equal(app.get('import-apply').disabled,false);
+  faults.write=true;app.get('import-apply').onclick();assert.equal(storage.get('equipment-manager-test-v1'),before);
+  faults.write=false;app.get('import-apply').onclick();
+  assert.equal(data().employees.length,1);assert.equal(data().items.length,1);
+  assert.equal(storage.get('equipment-manager-test-v1-before-import'),before);
+  app.get('undo-import').onclick();assert.equal(storage.get('equipment-manager-test-v1'),before);
+  // 同じJSONを再度取り込み、再起動でサンプルを勝手に足さない。
+  app.get('import-file').files=[{size:serialized.length,text:async()=>serialized}];await app.get('import-file').onchange();
+  app.get('import-confirm').checked=true;app.get('import-confirm').onchange();app.get('import-apply').onclick();
+  app=load(clockFor('2030-04-04'));assert.equal(data().items.length,1);assert.equal(data().employees.length,1);
+  // CSVは追加のみ。IDを採番し、確認前には保存しない。
+  app.get('import-type').value='items';app.get('import-type').onchange();
+  app.get('import-file').files=[{size:40,text:async()=> '物品ID,製品名,モデル番号\n1,追加品,M1\n1,追加品,M1\n'}];
+  await app.get('import-file').onchange();assert.equal(data().items.length,1);assert.equal(app.get('import-apply').disabled,false);
+  app.get('import-apply').onclick();assert.equal(data().items.length,3);assert.equal(data().items[1].id,2);assert.equal(data().items[2].id,3);
+  // 取り込み後の別操作を、取り消しで失わない。
+  app.get('product-name').value='後から登録';app.get('product-model').value='';app.get('register-form').onsubmit({preventDefault(){}});
+  app.get('undo-import').onclick();assert.equal(data().items.length,4);assert.ok(app.get('import-status').textContent.includes('元に戻せません'));
+  // 確認後にデータが変わった場合は取り込みを止める。
+  app.get('import-file').files=[{size:20,text:async()=> '製品名\n確認後変更\n'}];await app.get('import-file').onchange();
+  app.get('product-name').value='確認中に登録';app.get('register-form').onsubmit({preventDefault(){}});
+  app.get('import-apply').onclick();assert.equal(data().items.length,5);assert.ok(app.get('import-status').textContent.includes('選び直し'));
+  // 読み込み中にモードが変わっても、古い結果を適用しない。
+  let resolveFile;
+  app.get('import-file').files=[{size:20,text:()=>new Promise(resolve=>{resolveFile=resolve})}];
+  const pendingRead=app.get('import-file').onchange();
+  app.get('test-mode').checked=false;app.get('test-mode').onchange();resolveFile('製品名\n別モード混入\n');await pendingRead;
+  assert.equal(app.get('import-preview').hidden,true);assert.equal(app.run('db.items.length'),0);
+  console.log('PASS: import preview and confirmation, safe write failure, backup/undo, reload, CSV append IDs, changed-data guard and asynchronous mode isolation');
+})().catch(error=>{console.error(error);process.exitCode=1});

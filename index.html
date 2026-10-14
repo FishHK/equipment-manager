@@ -6,6 +6,7 @@
   <title>備品管理アプリ</title>
   <link rel="stylesheet" href="style.css">
   <script src="test-data.js" defer></script>
+  <script src="data-io.js" defer></script>
   <script src="script.js" defer></script>
 </head>
 <body>
@@ -86,8 +87,26 @@
       <div class="filters"><div><label for="history-search">記録を検索</label><input id="history-search" type="search" placeholder="名前・製品名・モデル番号"></div><div><label for="history-filter">表示する記録</label><select id="history-filter"><option value="all">すべて</option><option value="out">貸出中</option><option value="returned">返却済み</option><option value="overdue">返却期限超過</option><option value="reservation">予約</option></select></div></div>
       <div class="table-wrap"><table><thead><tr><th>社員</th><th>製品名</th><th>モデル番号</th><th>貸出日／予約日</th><th>返却予定日</th><th>返却日</th><th>状態</th></tr></thead><tbody id="records"></tbody></table></div>
     </section>
-    <section id="settings" class="panel narrow" hidden>
+    <section id="settings" class="panel" hidden>
       <h2>データの使い分け</h2><label class="toggle-row"><span>テストデータを使用する</span><input id="test-mode" type="checkbox" role="switch"></label><p id="mode-description"></p><div class="notice">オンとオフで保存データを分けます。切り替えても、それぞれの操作内容は残ります。</div><p class="table-note">データはこのブラウザに保存されます。ブラウザの保存データを削除すると記録も消えます。</p>
+      <div class="io-grid">
+        <section class="io-section"><h2>エクスポート</h2><p class="section-description">現在のモードのデータを保存します。復元にはJSONを使用してください。</p>
+          <button id="export-json" class="primary">JSONでバックアップ</button>
+          <label for="export-csv-type">CSVの出力対象</label><select id="export-csv-type"><option value="employees">社員</option><option value="items">物品</option><option value="loans">貸出・返却記録</option><option value="reservations">予約記録</option></select><button id="export-csv">CSVをダウンロード</button>
+          <p class="table-note">CSVはUTF-8です。数式として扱われる値には、安全のため先頭に引用符を付けます。</p>
+        </section>
+        <section class="io-section"><h2>インポート</h2><p class="section-description">ファイルを選ぶと内容を確認できます。確認前には保存されません。</p>
+          <label for="import-type">取り込み方法</label><select id="import-type"><option value="json">JSON：データ一式を復元（置き換え）</option><option value="employees">CSV：社員を追加</option><option value="items">CSV：物品を追加</option></select>
+          <p id="import-format-help" class="table-note"></p>
+          <label for="import-file">ファイル（UTF-8・5MB以内）</label><input id="import-file" type="file" accept=".json,.csv,application/json,text/csv">
+          <p id="import-status" role="status" aria-live="polite"></p>
+          <div id="import-preview" hidden><h3>取り込み内容の確認</h3><p id="import-summary"></p><div class="table-wrap"><table><thead><tr><th>種類</th><th>名前 / 内容</th></tr></thead><tbody id="import-preview-rows"></tbody></table></div>
+            <label id="import-confirm-label" class="confirm-row"><input id="import-confirm" type="checkbox">現在のモードのデータ一式を置き換えることを確認しました</label>
+            <div class="action"><button id="import-cancel">キャンセル</button><button id="import-apply" class="primary" disabled>取り込みを実行</button></div>
+          </div>
+          <button id="export-before-import" hidden>現在のデータをJSONで保存</button><button id="undo-import" hidden>直前の取り込みを元に戻す</button>
+        </section>
+      </div>
     </section>
   </main>
 </body>

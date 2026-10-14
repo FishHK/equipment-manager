@@ -5,7 +5,8 @@ const root = path.join(__dirname, '..');
 for (const args of [
   ['--check', 'script.js'],
   ['--check', 'test-data.js'],
-  ['--test', 'tests/test-data.test.cjs', 'tests/audit-samples.test.cjs']
+  ['--check', 'data-io.js'],
+  ['--test', 'tests/test-data.test.cjs', 'tests/audit-samples.test.cjs', 'tests/data-io.test.cjs']
 ]) {
   const result = spawnSync(process.execPath, args, { cwd: root, stdio: 'inherit' });
   if (result.error) { console.error(result.error.message); process.exit(1); }
