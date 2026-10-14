@@ -16,22 +16,24 @@ class Element {
   reset() {}
 }
 const storage = new Map();
-function load(clock = Date) {
+const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const htmlIds = new Set([...html.matchAll(/id="([^"]+)"/g)].map(match => match[1]));
+function load(clock = Date, faults = {}) {
   const elements = new Map();
-  const get = (id) => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
-  const tabs = ['lend', 'return', 'reserve', 'pickup', 'register', 'items', 'history', 'reservations'].map((page) => {
+  const get = (id) => { assert.ok(htmlIds.has(id), "Missing HTML element: " + id); if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
+  const tabs = ['lend', 'return', 'reserve', 'pickup', 'register', 'items', 'history', 'reservations', 'settings'].map((page) => {
     const button = new Element(); button.dataset.page = page; return button;
   });
   const context = vm.createContext({
     document: { getElementById: get, createElement: () => new Element(), querySelectorAll: () => tabs },
-    localStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value) },
+    localStorage: { getItem: (key) => { if (faults.read) throw Error("read failure"); return storage.get(key); }, setItem: (key, value) => { if (faults.write) throw Error("write failure"); storage.set(key, value); } },
     structuredClone, Date: clock, setInterval() {}
   });
   for (const file of ['test-data.js', 'script.js']) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context);
   return { get, tabs, run: (code) => vm.runInContext(code, context) };
 }
 let app = load();
-const data = () => JSON.parse(storage.get('equipment-manager-v1'));
+const data = () => JSON.parse(storage.get('equipment-manager-test-v1'));
 const initial = data();
 assert.equal(initial.employees.length, 55);
 assert.equal(initial.items.length, 67);
@@ -183,7 +185,7 @@ function pausedFixture(loans, reservations) {
   fixture.loans = loans; fixture.reservations = reservations;
   fixture.recordsArchiveV1 = structuredClone(archiveFixture);
   fixture.recordsPausedV1 = true;
-  storage.set('equipment-manager-v1', JSON.stringify(fixture));
+  storage.set('equipment-manager-test-v1', JSON.stringify(fixture));
 }
 pausedFixture([], []);
 app = load();
@@ -224,7 +226,7 @@ function clockFor(day) {
 }
 const clean = structuredClone(initial);
 clean.loans = []; clean.reservations = []; clean.recordsRestoredV1 = true;
-storage.set('equipment-manager-v1', JSON.stringify(clean));
+storage.set('equipment-manager-test-v1', JSON.stringify(clean));
 app = load(clockFor('2030-04-01'));
 app.tabs[2].onclick();
 app.get('employees').children[0].onclick();
@@ -272,3 +274,114 @@ app.tabs[3].onclick(); app.get('available-items').children[0].onclick(); app.get
 assert.equal(data().loans.length, 3);
 assert.equal(data().loans[2].employeeId, 3);
 console.log('PASS: same-day return blocks other borrowers in both loan paths; early return completes reservation and releases future days');
+// 設定オフの操作がテスト保存領域に混ざらず、再起動でモードを維持する。
+const testSnapshot = storage.get('equipment-manager-test-v1');
+app.tabs[8].onclick();
+assert.equal(app.get('settings').hidden, false);
+app.get('test-mode').checked = false; app.get('test-mode').onchange();
+assert.equal(app.run('testMode'), false);
+assert.equal(app.run('db.employees.length'), 0);
+assert.equal(app.run('db.items.length'), 0);
+app.get('product-name').value = '通常モードの物品';
+app.get('product-model').value = '';
+app.get('register-form').onsubmit({preventDefault(){}});
+assert.equal(JSON.parse(storage.get('equipment-manager-v1')).items.length, 1);
+assert.equal(storage.get('equipment-manager-test-v1'), testSnapshot);
+app = load(clockFor('2030-04-04'));
+assert.equal(app.run('testMode'), false);
+assert.equal(app.run('db.items[0].name'), '通常モードの物品');
+app.get('test-mode').checked = true; app.get('test-mode').onchange();
+assert.equal(storage.get('equipment-manager-test-v1'), testSnapshot);
+assert.equal(app.run('db.loans.length'), 3);
+console.log('PASS: settings toggle, isolated saves, preserved data and persisted mode');
+// 既存の混在データを分離し、カスタム登録と参照関係を保持。
+const legacy = structuredClone(initial);
+legacy.employees.push({id:1001,name:'登録社員'});
+legacy.items.push({id:1001,name:'登録物品',model:''});
+legacy.loans.push({id:1001,employeeId:1001,itemId:1001,lendDate:'2030-04-01',dueDate:'2030-04-04',returnDate:null});
+legacy.reservations.push({id:1001,employeeId:1001,itemId:1001,date:'2030-04-05',dueDate:'2030-04-06',loanId:null});
+storage.clear(); storage.set('equipment-manager-v1', JSON.stringify(legacy));
+app = load(clockFor('2030-04-04'));
+const normal = JSON.parse(storage.get('equipment-manager-v1'));
+assert.equal(normal.employees.length, 1); assert.equal(normal.items.length, 1);
+assert.equal(normal.loans.length, 1); assert.equal(normal.reservations.length, 1);
+assert.equal(storage.get('equipment-manager-before-settings-v1'), JSON.stringify(legacy));
+assert.equal(data().employees.length, 56);
+console.log('PASS: legacy migration preserves original backup and custom data references');
+// 保存失敗はメモリ状態と保存領域を変更しない。
+const faults = {};
+app = load(clockFor('2030-04-04'), faults);
+const beforeFailure = storage.get('equipment-manager-test-v1');
+const countBeforeFailure = app.run('db.items.length');
+faults.write = true;
+app.get('product-name').value='保存できない物品';app.get('product-model').value='';app.get('register-form').onsubmit({preventDefault(){}});
+assert.equal(app.run('db.items.length'), countBeforeFailure);
+assert.equal(storage.get('equipment-manager-test-v1'), beforeFailure);
+app.get('test-mode').checked=false; app.get('test-mode').onchange();
+assert.equal(app.run('testMode'), true);
+assert.equal(app.get('test-mode').checked, true);
+assert.equal(storage.get('equipment-manager-mode-v1'), 'on');
+faults.write=false;
+// 入力境界・誤った社員の返却・重複クリックを確認。
+app.tabs[0].onclick();app.run('employeeId=1001;itemId=1');app.get('employee-name').value='登録社員';
+const loanCount=data().loans.length;
+for (const invalid of ['', '2030-02-30', '2030-04-03', 'not-a-date']) {
+  app.get('due-date').value=invalid;app.get('submit').onclick();assert.equal(data().loans.length,loanCount);
+}
+app.get('due-date').value='2030-04-04';app.get('submit').onclick();app.get('submit').onclick();
+assert.equal(data().loans.length,loanCount+1);
+app.tabs[1].onclick();app.run('employeeId=1;itemId=1');app.get('employee-name').value='ダミーネーム001';app.get('submit').onclick();
+assert.equal(data().loans.at(-1).returnDate,null);
+app.run('employeeId=1001;itemId=1');app.get('employee-name').value='登録社員';app.get('submit').onclick();app.get('submit').onclick();
+assert.equal(data().loans.at(-1).returnDate,'2030-04-04');
+// 同姓同名の直接入力は新規登録せず拒否。
+app.tabs[0].onclick();app.run('itemId=2;employeeId=null');app.get('employee-name').value='テスト社員：同姓同名';app.get('submit').onclick();
+assert.equal(data().loans.length,loanCount+1);
+assert.ok(app.get('message').textContent.includes('同名'));
+console.log('PASS: write failures, invalid dates, wrong borrower, duplicate clicks and ambiguous employee names');
+// 破損JSON・読み込み失敗は保存データを上書きせず更新を停止。
+storage.set('equipment-manager-test-v1','{broken');
+app = load(clockFor('2030-04-04'));
+assert.equal(app.run('storageReady'),false);
+assert.equal(storage.get('equipment-manager-test-v1'),'{broken');
+assert.equal(app.get('submit').disabled,true);
+assert.equal(app.get('test-mode').disabled,true);
+app = load(clockFor('2030-04-04'),{read:true});
+assert.equal(app.run('storageReady'),false);
+console.log('PASS: corrupt JSON and unavailable storage stop updates without overwriting data');
+// JSONとして読めても、参照先不在・重複ID・二重貸出は停止する。
+for (const mutate of [
+  d => { d.loans[0].employeeId = 999999; },
+  d => { d.items[1].id = d.items[0].id; },
+  d => { d.loans.push({...d.loans.find(l => !l.returnDate),id:10000}); }
+]) {
+  const bad = structuredClone(initial); mutate(bad);
+  storage.set('equipment-manager-test-v1', JSON.stringify(bad));
+  app = load();
+  assert.equal(app.run('storageReady'), false);
+  assert.equal(storage.get('equipment-manager-test-v1'), JSON.stringify(bad));
+}
+console.log('PASS: missing references, duplicate IDs and duplicate active loans rejected before rendering');
+// 社員追加・期限超過の警告解除・製品登録の実操作。
+storage.clear();
+app = load(clockFor('2030-04-04'));
+app.tabs[1].onclick();
+const overdueButton = app.get('employees').children.find(button => button.textContent === 'テスト社員：期限超過30日');
+assert.ok(overdueButton.classes.has('overdue'));
+overdueButton.onclick();app.get('available-items').children[0].onclick();app.get('submit').onclick();
+app.tabs[0].onclick();
+assert.ok(!app.get('employees').children.find(button => button.textContent === 'テスト社員：期限超過30日').classes.has('overdue'));
+const peopleBefore=data().employees.length;
+app.get('employee-name').value='<直接入力> & 社員';app.get('employee-name').oninput();
+app.get('available-items').children.find(button => button.textContent === 'ダミーアイテム001').onclick();app.get('submit').onclick();
+assert.equal(data().employees.length,peopleBefore+1);
+assert.equal(data().employees.at(-1).name,'<直接入力> & 社員');
+assert.equal(app.get('employees').children.at(-1).textContent,'<直接入力> & 社員');
+const productsBefore=data().items.length;
+for(let i=0;i<2;i++) {
+  app.get('product-name').value='名前だけ登録';app.get('product-model').value='';app.get('register-form').onsubmit({preventDefault(){}});
+}
+assert.equal(data().items.length,productsBefore+2);
+assert.equal(app.run('itemName(db.items.at(-2))'),'名前だけ登録 (1)');
+assert.equal(app.run('itemName(db.items.at(-1))'),'名前だけ登録 (2)');
+console.log('PASS: direct employee registration, escaped text display, overdue warning cleared and duplicate name-only products');

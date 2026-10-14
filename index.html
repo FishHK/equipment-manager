@@ -10,7 +10,7 @@
 </head>
 <body>
   <main>
-    <header><h1>備品管理アプリ</h1><span>このブラウザに自動保存</span></header>
+    <header><h1>備品管理アプリ</h1><strong id="mode-badge"></strong><span>このブラウザに自動保存</span></header>
     <nav aria-label="ページ切り替え">
       <button data-page="lend" aria-current="page">貸出</button>
       <button data-page="return">返却</button>
@@ -20,6 +20,7 @@
       <button data-page="register">物品登録</button>
       <button data-page="items">物品一覧</button>
       <button data-page="history">記録</button>
+      <button data-page="settings">設定</button>
     </nav>
     <p id="message" role="status" aria-live="polite"></p>
     <section id="operation">
@@ -75,6 +76,12 @@
       <label for="history-search">記録を検索</label>
       <input id="history-search" type="search" placeholder="名前・製品名・モデル番号で検索">
       <div class="table-wrap"><table><thead><tr><th>借りた人</th><th>製品名</th><th>モデル番号</th><th>貸出日／予約日</th><th>返却予定日</th><th>返却日</th><th>状態</th></tr></thead><tbody id="records"></tbody></table></div>
+    </section>
+    <section id="settings" class="panel" hidden>
+      <h2>設定</h2>
+      <label><input id="test-mode" type="checkbox"> テストデータを使用する</label>
+      <p id="mode-description"></p>
+      <p>オンとオフで保存データを分けます。切り替えても、それぞれの操作内容は残ります。</p>
     </section>
   </main>
 </body>

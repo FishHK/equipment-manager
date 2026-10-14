@@ -45,3 +45,5 @@ select { font: inherit; padding: 10px; border: 1px solid #b9c5d6; border-radius:
 .icon-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .icon-button:last-child { color: #b91c1c; }
 #editing-notice { padding: 12px; color: #134ab8; background: #e5eeff; border-radius: 6px; }
+#test-mode { width: auto; margin-right: 8px; }
+#mode-badge { font-size: 13px; color: #245bd6; }

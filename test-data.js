@@ -89,3 +89,57 @@ function restoreArchivedRecords(data, currentDate) {
   data.recordsRestoreConflictsV1 = conflicts;
   data.recordsRestoredV1 = true;
 }
+
+// 過去の混在データから通常データを取り出す。元データは別キーで保持。
+function separateNormalData(data) {
+  const generated = { employees: [], items: [], loans: [], reservations: [] };
+  addTestData(generated, '2000-01-01');
+  const employeeNames = new Set(generated.employees.map(row => row.name));
+  const itemNames = new Set(generated.items.map(row => row.name));
+  const dummy = (name, prefix) => {
+    const match = new RegExp('^' + prefix + '(\\d{3})$').exec(name);
+    return match && Number(match[1]) >= 1 && Number(match[1]) <= 40;
+  };
+  const employees = data.employees.filter(row => !employeeNames.has(row.name) && !dummy(row.name, 'ダミーネーム'));
+  const items = data.items.filter(row => !itemNames.has(row.name) && !dummy(row.name, 'ダミーアイテム'));
+  const people = new Set(employees.map(row => row.id)), products = new Set(items.map(row => row.id));
+  const loans = data.loans.filter(row => people.has(row.employeeId) && products.has(row.itemId));
+  const loanIds = new Set(loans.map(row => row.id));
+  const reservations = data.reservations.filter(row => people.has(row.employeeId) && products.has(row.itemId) && (!row.loanId || loanIds.has(row.loanId)));
+  return { employees, items, loans, reservations };
+}
+
+// 読み込み時に壊れた参照や重複IDを検出し、描画中の例外を防ぐ。
+function validateDatabase(data) {
+  const date = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+  const ids = {};
+  for (const key of ['employees', 'items', 'loans', 'reservations']) {
+    if (!Array.isArray(data[key])) throw Error('Invalid collection');
+    ids[key] = new Set();
+    for (const row of data[key]) {
+      if (!row || !Number.isSafeInteger(row.id) || row.id < 1 || ids[key].has(row.id)) throw Error('Invalid ID');
+      ids[key].add(row.id);
+    }
+  }
+  for (const row of [...data.employees, ...data.items]) {
+    if (typeof row.name !== 'string' || !row.name.trim()) throw Error('Invalid name');
+  }
+  for (const row of data.items) if (typeof row.model !== 'string') throw Error('Invalid model');
+  const active = new Set();
+  for (const loan of data.loans) {
+    if (!ids.employees.has(loan.employeeId) || !ids.items.has(loan.itemId) || !date(loan.lendDate)) throw Error('Invalid loan');
+    if (loan.dueDate != null && !date(loan.dueDate)) throw Error('Invalid deadline');
+    if (loan.returnDate != null && !date(loan.returnDate)) throw Error('Invalid return');
+    if (!loan.returnDate) {
+      if (active.has(loan.itemId)) throw Error('Duplicate active loan');
+      active.add(loan.itemId);
+    }
+  }
+  for (const r of data.reservations) {
+    if (!ids.employees.has(r.employeeId) || !ids.items.has(r.itemId) || !date(r.date) || !date(r.dueDate)) throw Error('Invalid reservation');
+    if (r.loanId != null) {
+      const loan = data.loans.find(row => row.id === r.loanId);
+      if (!loan || loan.itemId !== r.itemId || loan.employeeId !== r.employeeId) throw Error('Invalid reservation link');
+    }
+  }
+}

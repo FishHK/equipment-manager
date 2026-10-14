@@ -1,6 +1,10 @@
 "use strict";
 
-const KEY = "equipment-manager-v1";
+const NORMAL_KEY = "equipment-manager-v1";
+const TEST_KEY = "equipment-manager-test-v1";
+const MODE_KEY = "equipment-manager-mode-v1";
+let testMode = true;
+let KEY = TEST_KEY;
 const $ = (id) => document.getElementById(id);
 const pad = (n) => String(n).padStart(3, "0");
 const today = () => {
@@ -15,13 +19,29 @@ const seed = () => ({
 let db;
 let storageReady = true;
 try {
+  if (!localStorage.getItem(MODE_KEY)) {
+    const legacy = localStorage.getItem(NORMAL_KEY);
+    const test = legacy ? JSON.parse(legacy) : seed();
+    if (!Array.isArray(test.employees) || !Array.isArray(test.items) || !Array.isArray(test.loans)) throw new Error();
+    test.reservations ??= [];
+    if (!Array.isArray(test.reservations)) throw new Error();
+    addTestData(test, today()); restoreArchivedRecords(test, today());
+    validateDatabase(test);
+    const normal = separateNormalData(test);
+    if (legacy && !localStorage.getItem("equipment-manager-before-settings-v1")) localStorage.setItem("equipment-manager-before-settings-v1", legacy);
+    localStorage.setItem(TEST_KEY, JSON.stringify(test));
+    localStorage.setItem(NORMAL_KEY, JSON.stringify(normal));
+    localStorage.setItem(MODE_KEY, "on");
+  }
+  testMode = localStorage.getItem(MODE_KEY) !== "off";
+  KEY = testMode ? TEST_KEY : NORMAL_KEY;
   const saved = localStorage.getItem(KEY);
-  db = saved ? JSON.parse(saved) : seed();
+  db = saved ? JSON.parse(saved) : (testMode ? seed() : { employees: [], items: [], loans: [], reservations: [] });
   if (!Array.isArray(db.employees) || !Array.isArray(db.items) || !Array.isArray(db.loans)) throw new Error();
   db.reservations ??= [];
   if (!Array.isArray(db.reservations)) throw new Error();
-  addTestData(db, today());
-  restoreArchivedRecords(db, today());
+  if (testMode) { addTestData(db, today()); restoreArchivedRecords(db, today()); }
+  validateDatabase(db);
   localStorage.setItem(KEY, JSON.stringify(db));
 } catch {
   db = seed();
@@ -266,7 +286,7 @@ function navigate(nextPage) {
     else tab.removeAttribute("aria-current");
   });
   $("operation").hidden = !["lend", "return", "reserve", "pickup"].includes(page);
-  for (const id of ["register", "items", "reservations", "history"]) $(id).hidden = page !== id;
+  for (const id of ["register", "items", "reservations", "history", "settings"]) $(id).hidden = page !== id;
   if (storageReady) message("");
   renderOperation(); renderTables();
 }
@@ -352,6 +372,32 @@ $("register-form").onsubmit = (event) => {
   message("「" + name + "」を登録しました。");
   renderOperation(); renderTables();
 };
+function renderSettings() {
+  $("test-mode").checked = testMode;
+  $("test-mode").disabled = !storageReady;
+  $("mode-badge").textContent = testMode ? "テストモード" : "通常モード";
+  $("mode-description").textContent = testMode ? "テストデータで操作しています。通常データには影響しません。" : "通常データで操作しています。ダミー社員・物品は表示しません。";
+}
+$("test-mode").onchange = () => {
+  const nextMode = $("test-mode").checked;
+  if (!storageReady) return;
+  const key = nextMode ? TEST_KEY : NORMAL_KEY;
+  try {
+    const saved = localStorage.getItem(key);
+    const next = saved ? JSON.parse(saved) : { employees: [], items: [], loans: [], reservations: [] };
+    if (![next.employees, next.items, next.loans, next.reservations].every(Array.isArray)) throw new Error();
+    validateDatabase(next);
+    localStorage.setItem(MODE_KEY, nextMode ? "on" : "off");
+    db = next; testMode = nextMode; KEY = key;
+    clearSelection(); closeReservationEditor();
+    for (const id of ["inventory-search", "history-search", "reservation-search", "reservation-date", "product-name", "product-model"]) $(id).value = "";
+    $("due-date").value = today();
+    message(nextMode ? "テストデータに切り替えました。" : "通常データに切り替えました。");
+    renderOperation(); renderTables();
+  } catch { message("データを切り替えられませんでした。現在のデータは変更していません。", true); }
+  renderSettings();
+};
+renderSettings();
 $("reservation-filter").value = "active";
 $("due-date").value = today();
 $("register-submit").disabled = !storageReady;
